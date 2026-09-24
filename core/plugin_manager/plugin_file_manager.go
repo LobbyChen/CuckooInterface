@@ -148,8 +148,7 @@ func (pm *PluginFileManager) GetBasePlugins() []*SinglePluginFile {
 	return pm.Base
 }
 func (pm *PluginFileManager) AddPlugins(onPluginAdd func(*SinglePluginFile), singlePlugin ...*SinglePluginFile) {
-	// 先在锁内完成切片追加，再在锁外启动回调 goroutine，
-	// 避免 onPluginAdd 回调尝试获取 pm.lock 时死锁。
+	// 先在锁内完成切片追加，再在锁外启动回调 goroutine
 	var toNotify []*SinglePluginFile
 	pm.lock.Lock()
 	for _, plugin := range singlePlugin {
@@ -182,7 +181,7 @@ func ExtractHelper(fp, targetFolder string) error {
 	}
 	defer r.Close()
 	for _, f := range r.File {
-		// 统一路径分隔符，防止 Windows ZIP 内的反斜杠导致路径穿越或扁平化
+		// 统一路径分隔符
 		cleanName := filepath.Clean(strings.ReplaceAll(f.Name, "\\", "/"))
 		destPath := filepath.Join(targetFolder, cleanName)
 		if !strings.HasPrefix(destPath, filepath.Clean(targetFolder)+string(os.PathSeparator)) {

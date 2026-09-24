@@ -44,3 +44,14 @@ const (
 	MetaFile       string = "META-INF.json"
 	KernelEntrance string = "binary/export.dll"
 )
+
+// dameon参数定义
+const ArgTag = "launch_type"
+
+const (
+	NormalModeArgData = "normal"
+	DameonModeArgData = "dameon"
+)
+
+// namepipe定义
+const NamePipe string = "\\\\.\\pipe\\CuckooInterfaceBridge"

@@ -54,7 +54,7 @@ func (pm *PluginManager) handleActive(plug pluginDescriptor, name string) error 
 	return firstErr
 }
 func (pm *PluginManager) handleBasePlugin(plug pluginDescriptor) error {
-	// 注册事件产生。事件声明是 Base 插件的核心依赖，任意一个注册失败都应中止加载。
+	// 注册事件产生。事件声明是 Base 插件的核心依赖
 	var firstErr error
 	for i := range plug.p.ProvidedEvents {
 		err := pm.eventBus.RegisterEvent(plug.p.PluginID, plug.p.ProvidedEvents[i].EventName)
@@ -104,7 +104,7 @@ func (pm *PluginManager) LoadPlugin(plugin *SinglePluginFile) error {
 	default:
 		regErr = fmt.Errorf("unknown plugin type: %d", plugin.Typo)
 	}
-	// 核心事件注册失败：回滚加载，从已加载列表移除并通知 Kernel 卸载，避免静默失败
+	// 核心事件注册失败：回滚加载，从已加载列表移除并通知 Kernel 卸载
 	if regErr != nil {
 		// 先注销已注册的监听器/事件，避免 EventBus 持有悬空指针或永久占用事件名
 		pm.eventBus.UnregisterPlugin(kernel, plug.Handle())

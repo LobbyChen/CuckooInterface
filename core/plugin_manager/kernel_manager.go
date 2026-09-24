@@ -244,7 +244,7 @@ func (km *KernelManager) StartAllLoops() {
 	}
 }
 
-// ShutdownAll 优雅关闭所有 Kernel
+// ShutdownAll 关闭所有 Kernel
 func (km *KernelManager) ShutdownAll() {
 	km.lock.Lock()
 	defer km.lock.Unlock()
