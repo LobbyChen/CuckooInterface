@@ -1,0 +1,190 @@
+package event
+
+import (
+	"CuckooInterface/plugins"
+	"errors"
+	"fmt"
+	"sync"
+)
+
+type receiverEntry struct {
+	record plugins.ListenerRecord
+	kernel *plugins.Kernel
+	handle plugins.PluginHandle // 对应 C 侧的 CuckooPluginHandle
+}
+
+// event 代表一个已注册的事件通道
+type event struct {
+	name       string
+	providerID string
+	receivers  []receiverEntry
+	lock       sync.RWMutex
+}
+
+// EventBus 核心事件总线
+type EventBus struct {
+	events     map[string]*event
+	globalLock sync.Mutex
+	once       sync.Once
+	// Worker 池
+	taskCh      chan emitTask
+	workerCount int
+}
+
+// emitTask 表示一次事件触发任务
+type emitTask struct {
+	eventName string
+	rec       receiverEntry
+	payload   string
+}
+
+// 默认 Worker 数量与任务队列容量
+const (
+	defaultWorkerCount = 16
+	defaultTaskQueue   = 1024
+)
+
+func NewEventBus() *EventBus {
+	bus := &EventBus{
+		events:      make(map[string]*event),
+		taskCh:      make(chan emitTask, defaultTaskQueue),
+		workerCount: defaultWorkerCount,
+	}
+	// 启动固定数量的 Worker Goroutine 消费事件任务
+	for i := 0; i < bus.workerCount; i++ {
+		go bus.eventWorker()
+	}
+	return bus
+}
+
+// eventWorker 消费事件任务队列，调用 Kernel 的 TriggerCallback
+func (bus *EventBus) eventWorker() {
+	for task := range bus.taskCh {
+		func() {
+			defer func() {
+				if err := recover(); err != nil {
+					fmt.Printf("[EventBus] Panic in listener for event %s: %v\n", task.eventName, err)
+				}
+			}()
+			task.rec.kernel.TriggerCallback(task.rec.handle, &task.rec.record, task.payload)
+		}()
+	}
+}
+
+// RegisterEvent 由插件提供者声明一个事件
+func (bus *EventBus) RegisterEvent(providerID string, name string) error {
+	if providerID == "" || name == "" {
+		return errors.New("provider ID or event name is empty")
+	}
+	bus.globalLock.Lock()
+	defer bus.globalLock.Unlock()
+	if _, exists := bus.events[name]; exists {
+		return fmt.Errorf("event %s already registered by provider %s", name, providerID)
+	}
+	bus.events[name] = &event{
+		name:       name,
+		providerID: providerID,
+		receivers:  make([]receiverEntry, 0),
+	}
+	return nil
+}
+
+// RegisterListener 注册监听器并绑定到具体的 Kernel 和 Plugin Handle
+func (bus *EventBus) RegisterListener(receiver plugins.ListenerRecord, kernel *plugins.Kernel, handle plugins.PluginHandle) error {
+	if kernel == nil {
+		return errors.New("kernel cannot be nil")
+	}
+	bus.globalLock.Lock()
+	evt, exists := bus.events[receiver.EventName]
+	bus.globalLock.Unlock()
+	if !exists {
+		return fmt.Errorf("event %s has not been registered yet", receiver.EventName)
+	}
+	evt.lock.Lock()
+	defer evt.lock.Unlock()
+	// 去重检查
+	for _, r := range evt.receivers {
+		if r.record.Function == receiver.Function && r.kernel == kernel {
+			return nil // 已经注册过
+		}
+	}
+	evt.receivers = append(evt.receivers, receiverEntry{
+		record: receiver,
+		kernel: kernel,
+		handle: handle,
+	})
+	return nil
+}
+
+// UnregisterPlugin 移除指定 Kernel + PluginHandle 关联的所有监听器。
+// 必须在插件卸载时调用
+// 后续事件触发时会导致悬空指针访问。
+func (bus *EventBus) UnregisterPlugin(kernel *plugins.Kernel, handle plugins.PluginHandle) {
+	bus.globalLock.Lock()
+	events := make([]*event, 0, len(bus.events))
+	for _, evt := range bus.events {
+		events = append(events, evt)
+	}
+	bus.globalLock.Unlock()
+	for _, evt := range events {
+		evt.lock.Lock()
+		filtered := evt.receivers[:0]
+		for _, r := range evt.receivers {
+			// 保留不属于该插件的监听器
+			if !(r.kernel == kernel && r.handle == handle) {
+				filtered = append(filtered, r)
+			}
+		}
+		evt.receivers = filtered
+		evt.lock.Unlock()
+	}
+}
+
+// UnregisterPluginEvents 移除指定 provider 注册的所有事件。
+// Base 插件卸载或加载失败回滚时必须调用，否则事件名被永久占用，
+// 其他插件无法注册同名事件。
+func (bus *EventBus) UnregisterPluginEvents(providerID string) {
+	bus.globalLock.Lock()
+	defer bus.globalLock.Unlock()
+	for name, evt := range bus.events {
+		if evt.providerID == providerID {
+			delete(bus.events, name)
+		}
+	}
+}
+
+// Emit 触发事件 通知所有订阅者
+func (bus *EventBus) Emit(eventName string, payload string) {
+	bus.globalLock.Lock()
+	evt, exists := bus.events[eventName]
+	bus.globalLock.Unlock()
+	if !exists {
+		return
+	}
+	evt.lock.RLock()
+	receivers := make([]receiverEntry, len(evt.receivers))
+	copy(receivers, evt.receivers)
+	evt.lock.RUnlock()
+	// 将每个接收者的触发任务投递到 Worker 队列，由固定数量的 Worker 消费，
+	// 避免高频事件下无限制创建 Goroutine 导致线程耗尽。
+	for _, rec := range receivers {
+		task := emitTask{eventName: eventName, rec: rec, payload: payload}
+		select {
+		case bus.taskCh <- task:
+		default:
+			// 队列已满，打印警告并丢弃该次触发，避免阻塞事件源
+			fmt.Printf("[EventBus] Task queue full, dropping event %s for one listener\n", eventName)
+		}
+	}
+}
+
+// GetEventNames 获取所有已注册的事件名
+func (bus *EventBus) GetEventNames() []string {
+	bus.globalLock.Lock()
+	defer bus.globalLock.Unlock()
+	names := make([]string, 0, len(bus.events))
+	for name := range bus.events {
+		names = append(names, name)
+	}
+	return names
+}
