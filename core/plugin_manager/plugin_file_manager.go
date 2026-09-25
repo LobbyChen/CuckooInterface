@@ -48,8 +48,22 @@ func NewFileManager() *PluginFileManager {
 func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, error) {
 	var succ uint64
 	var Plugins []SinglePluginFile
+	// 统一为绝对路径
+	absFolder, err := filepath.Abs(pluginsFolder)
+	if err != nil {
+		return 0, err
+	}
+	activeDir := filepath.Join(absFolder, filepath.Base(constantPkg.ActivePluginFolder))
+	baseDir := filepath.Join(absFolder, filepath.Base(constantPkg.BasePluginFolder))
+	kernelDir := filepath.Join(absFolder, filepath.Base(constantPkg.KernelPluginFolder))
+	// 解压目标统一放在可执行目录下的 plugins 运行时目录
+	baseDirForExtract, err := utils.GetExecutableDir()
+	if err != nil {
+		return 0, err
+	}
+	runtimeDir := filepath.Join(baseDirForExtract, constantPkg.RuntimePluginFolder)
 	// 对于所有文件进行遍历
-	err := filepath.Walk(pluginsFolder, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(absFolder, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
 		}
@@ -68,29 +82,30 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 	defer pm.lock.Unlock()
 	// 区分Kernel和Base以及Active 同时解压
 	for _, file := range Plugins {
-		dir := filepath.ToSlash(filepath.Dir(file.fp))
+		dir := filepath.Dir(file.fp)
+		targetDir := filepath.Join(runtimeDir, filepath.Base(trimExt(file.fp)))
 		switch dir {
-		case constantPkg.ActivePluginFolder:
+		case activeDir:
 			pm.Active = append(pm.Active, &SinglePluginFile{
 				fp:   file.fp,
-				dir:  filepath.Join(constantPkg.RuntimePluginFolder, filepath.Base(trimExt(file.fp))),
+				dir:  targetDir,
 				Typo: constantPkg.ACTIVE,
 			})
-			err = ExtractHelper(file.fp, filepath.Join(constantPkg.RuntimePluginFolder, filepath.Base(trimExt(file.fp))))
-		case constantPkg.BasePluginFolder:
+			err = ExtractHelper(file.fp, targetDir)
+		case baseDir:
 			pm.Base = append(pm.Base, &SinglePluginFile{
 				fp:   file.fp,
-				dir:  filepath.Join(constantPkg.RuntimePluginFolder, filepath.Base(trimExt(file.fp))),
+				dir:  targetDir,
 				Typo: constantPkg.BASE,
 			})
-			err = ExtractHelper(file.fp, filepath.Join(constantPkg.RuntimePluginFolder, filepath.Base(trimExt(file.fp))))
-		case constantPkg.KernelPluginFolder:
+			err = ExtractHelper(file.fp, targetDir)
+		case kernelDir:
 			pm.Kernel = append(pm.Kernel, &SinglePluginFile{
 				fp:   file.fp,
-				dir:  filepath.Join(constantPkg.RuntimePluginFolder, filepath.Base(trimExt(file.fp))),
+				dir:  targetDir,
 				Typo: constantPkg.KERNEL,
 			})
-			err = ExtractHelper(file.fp, filepath.Join(constantPkg.RuntimePluginFolder, filepath.Base(trimExt(file.fp))))
+			err = ExtractHelper(file.fp, targetDir)
 		}
 		if err != nil {
 			continue
@@ -192,7 +207,7 @@ func ExtractHelper(fp, targetFolder string) error {
 			os.MkdirAll(destPath, 0755)
 			continue
 		}
-		// 确保父目录存在（mirbf/unzip 不会自动创建）
+		// 确保父目录存在
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			return fmt.Errorf("create dir for %s failed: %w", destPath, err)
 		}
@@ -236,15 +251,16 @@ func loadMeta(plugin *SinglePluginFile) error {
 	plugin.Meta = obj
 	return nil
 }
+
+// readMetaString 返回 META-INF.json 的原始内容。
 func readMetaString(plugin *SinglePluginFile) (string, error) {
 	cfgfp := filepath.Join(plugin.dir, constantPkg.MetaFile)
 	if !utils.IsFileExist(cfgfp) {
 		return "", errors.New("file not exist")
 	}
-	var obj string
-	obj, e := utils.LoadJson[string](cfgfp)
-	if e != nil {
-		return "", e
+	data, err := os.ReadFile(cfgfp)
+	if err != nil {
+		return "", err
 	}
-	return obj, nil
+	return string(data), nil
 }

@@ -12,24 +12,21 @@ import (
 	"time"
 )
 
-// 加载 Kernel DLL 的超时时间。CGO 调用无法响应 Go Context 取消，
-// 因此用独立 Goroutine + select 超时来防止主流程被永久阻塞。
+// 加载 Kernel DLL 的超时时间。
 const kernelLoadTimeout = 30 * time.Second
 
 // kernelEntry 记录一个已加载 Kernel 的状态
 type kernelEntry struct {
 	kernel *plugins.Kernel
-	id     string // kernel 唯一标识，用于 IntoLoopReport 分发
+	id     string // kernel 唯一标识
 	isInit bool
 }
 
 type KernelManager struct {
-	FileManager *PluginFileManager
-	kernels     []kernelEntry
-	HostAPI     *plugins.HostAPI
-	HostAPIOnce sync.Once
-	// initLoopReporterOnce 保证 IntoLoopReport 分发器只设置一次，
-	// 避免多个 Kernel 并发初始化时互相覆盖共享的 api.IntoLoopReport。
+	FileManager          *PluginFileManager
+	kernels              []kernelEntry
+	HostAPI              *plugins.HostAPI
+	HostAPIOnce          sync.Once
 	initLoopReporterOnce sync.Once
 	lock                 sync.Mutex
 }
@@ -57,9 +54,6 @@ func (km *KernelManager) LoadSingleKernel(kernel *SinglePluginFile, ctx context.
 		return errors.New("kernel plugin not found in kernel manager")
 	}
 	dllPath := filepath.Join(kernel.dir, constantPkg.KernelEntrance)
-	// CGO 调用 (NewKernelWithDLL) 无法响应 Go Context 取消。
-	// 将其放入独立 Goroutine，通过 select 监听 ctx.Done() 与超时，
-	// 即使底层 C 线程仍在阻塞，Go 主流程也能及时放弃。
 	type loadResult struct {
 		k   *plugins.Kernel
 		err error
@@ -167,7 +161,6 @@ func (km *KernelManager) InitSingleKernelAsync(kernel *plugins.Kernel) <-chan er
 }
 
 // dispatchLoopReport 根据 kernel_id 找到对应 Kernel 并通知其进入循环。
-// 使用 select default 防止 StartLoop 已退出导致 channel 阻塞。
 func (km *KernelManager) dispatchLoopReport(kernelID string) {
 	km.lock.Lock()
 	var target *plugins.Kernel

@@ -39,6 +39,13 @@ type CfgManager struct {
 	lock       sync.Mutex
 }
 
+// NewCfgManager 创建配置管理器并初始化内存配置表。
+func NewCfgManager() *CfgManager {
+	return &CfgManager{
+		pluginsCfg: make(map[string]*SinglePluginConfig),
+	}
+}
+
 func (cm *CfgManager) SetCfgPath(path string) {
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
@@ -60,6 +67,9 @@ func (cm *CfgManager) LoadValidConfig(dir string) error {
 	}
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
+	if cm.pluginsCfg == nil {
+		cm.pluginsCfg = make(map[string]*SinglePluginConfig)
+	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -94,12 +104,14 @@ func (cm *CfgManager) RegisterConfig(PluginName string) error {
 	fp := filepath.Join(cm.CfgPath, PluginName+".cfg")
 	// 检测是否已经有该文件
 	if utils.IsFileExist(fp) {
-		// 加载
+		// 加载已有配置
 		if cfg, err := loadBinaryConfig(fp); err != nil {
-			maps.Copy(cm.pluginsCfg, cfg)
+			cm.pluginsCfg[PluginName] = &SinglePluginConfig{configString: ""}
+			return nil
+		} else {
+			cm.pluginsCfg[PluginName] = cfg[PluginName]
+			return nil
 		}
-		// 返回
-		return nil
 	}
 	f, err := os.Create(fp)
 	if err != nil {
@@ -144,7 +156,6 @@ func loadBinaryConfig(fp string) (map[string]*SinglePluginConfig, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 	// SaveConfig 写入格式: [8字节 configLength] + [configString]
-	// pluginName 由文件名推导，无需在文件中重复存储
 	if len(data) < 8 {
 		return nil, errors.New("invalid config file: too short")
 	}

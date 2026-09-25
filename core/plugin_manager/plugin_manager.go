@@ -11,6 +11,7 @@ import (
 type pluginDescriptor struct {
 	p      *plugins.PluginDescriptor
 	kernel *plugins.Kernel
+	typo   constantPkg.PlugType
 }
 
 // PluginManager 上层插件管理器
@@ -92,6 +93,7 @@ func (pm *PluginManager) LoadPlugin(plugin *SinglePluginFile) error {
 	descriptor := pluginDescriptor{
 		p:      plug,
 		kernel: kernel,
+		typo:   plugin.Typo,
 	}
 	pm.loadedPlugins[plugin.Name()] = descriptor
 	// 注册事件
@@ -132,4 +134,43 @@ func (pm *PluginManager) UnloadPlugin(plugin *SinglePluginFile) error {
 	// 移除 map
 	delete(pm.loadedPlugins, plugin.Name())
 	return nil
+}
+
+// PluginSummary 插件摘要，供外部（如 IPC 查询）只读使用
+type PluginSummary struct {
+	Name      string               `json:"name"`
+	PluginID  string               `json:"plugin_id"`
+	Runtime   string               `json:"runtime"`
+	Type      constantPkg.PlugType `json:"type"`
+	Listeners []string             `json:"listeners"`
+	Events    []string             `json:"provided_events"`
+}
+
+// ListLoadedPlugins 返回当前已加载插件的只读摘要列表
+func (pm *PluginManager) ListLoadedPlugins() []PluginSummary {
+	sums := make([]PluginSummary, 0, len(pm.loadedPlugins))
+	for _, d := range pm.loadedPlugins {
+		s := PluginSummary{
+			Name:     d.p.PluginID,
+			PluginID: d.p.PluginID,
+			Runtime:  d.p.LanguageRuntime,
+			Type:     d.typo,
+		}
+		for _, l := range d.p.Listeners {
+			s.Listeners = append(s.Listeners, l.EventName)
+		}
+		for _, e := range d.p.ProvidedEvents {
+			s.Events = append(s.Events, e.EventName)
+		}
+		sums = append(sums, s)
+	}
+	return sums
+}
+
+// GetEventNames 返回事件总线上已注册的全部事件名
+func (pm *PluginManager) GetEventNames() []string {
+	if pm.eventBus == nil {
+		return nil
+	}
+	return pm.eventBus.GetEventNames()
 }

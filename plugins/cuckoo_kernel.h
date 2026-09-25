@@ -66,10 +66,9 @@ typedef struct {
                      CuckooPluginDescriptor* out_descriptor);
   /**
    * @brief 触发该插件实例中的某个回调函数
-   * @param handle 插件实例句柄 (由 load_plugin 返回的 internal_object_ptr 或
-   * instance_id)
-   * @param listener 监听器记录 (包含 function_ptr)
-   * @param payload 事件载荷数据（只读，Kernel 不应修改）
+   * @param handle 插件实例句柄
+   * @param listener 监听器记录
+   * @param payload 事件载荷数据
    */
   void (*trigger_callback)(CuckooPluginHandle handle,
                            const CuckooListenerRecord* listener,

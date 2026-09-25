@@ -7,7 +7,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-// 创建沙箱上下文，加载 DLL 并启动专属工作线程
+// 创建沙箱上下文
 void* create_sandbox(const char* dll_path);
 // 销毁沙箱，停止线程并卸载 DLL
 void destroy_sandbox(void* ctx);
@@ -28,9 +28,9 @@ void sandbox_start_loop_async(void* ctx, CuckooHostAPI* api);
 void sandbox_shutdown(void* ctx);
 // 检查沙箱是否存活
 int is_sandbox_alive(void* ctx);
-// 获取最近一次崩溃的原因（VEH 写入，Go 侧检测到崩溃后调用）
+// 获取最近一次崩溃的原因
 void sandbox_get_crash_reason(void* ctx, char* buf, int bufsize);
-// 阻塞等待沙箱崩溃事件触发（Go 侧 goroutine 调用）
+// 阻塞等待沙箱崩溃事件触发
 void sandbox_wait_for_crash(void* ctx);
 #ifdef __cplusplus
 }
