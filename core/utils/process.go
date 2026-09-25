@@ -2,6 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -25,7 +27,7 @@ func terminateProcess(pid uint32) error {
 }
 
 // 通过进程名查找并杀死进程
-func killProcessByName(processName string) error {
+func KillProcessByName(processName string) error {
 	// 创建快照
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -58,4 +60,12 @@ func killProcessByName(processName string) error {
 	}
 
 	return nil
+}
+
+func GetExecutableName() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Base(exePath), nil
 }

@@ -30,7 +30,7 @@ func startNormMode() error {
 	return cmd.Wait() // 等待子进程结束
 }
 
-func DameonLoop() error {
+func DameonLoop() {
 	stopCh := make(chan struct{})
 	// 运行托盘
 	go runTray(func() {
@@ -40,16 +40,21 @@ func DameonLoop() error {
 		select {
 		case <-stopCh:
 			// 利用taskill im结束后台进程
+			name, err := utils.GetExecutableName()
+			if err != nil {
+				err = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprintf("在结束进程时失败:%v", err))
+			}
+			err = utils.KillProcessByName(name)
+			if err != nil {
+				err = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprintf("在结束进程时失败:%v", err))
+			}
 		default:
 			// 拉起NormMode主程序
 			err := startNormMode()
 			if err != nil {
 				logger.GetLogger().Error(err.Error())
-			}
-			// 若因为错误崩溃，显示msg
-			err = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprint(err))
-			if err != nil {
-				logger.GetLogger().Error(err.Error())
+				// 若因为错误崩溃，显示崩溃msg
+				err = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprintf("core出现错误:%v", err))
 			}
 		}
 	}
