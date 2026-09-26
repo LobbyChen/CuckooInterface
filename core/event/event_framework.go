@@ -1,10 +1,12 @@
 package event
 
 import (
+	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type receiverEntry struct {
@@ -26,16 +28,29 @@ type EventBus struct {
 	events     map[string]*event
 	globalLock sync.Mutex
 	once       sync.Once
+	// 事件缓冲区
+	eventQueue *utils.RingQueue[*EmitTask]
 	// Worker 池
-	taskCh      chan emitTask
+	taskCh      chan EmitTask
 	workerCount int
 }
 
-// emitTask 表示一次事件触发任务
-type emitTask struct {
-	eventName string
+// EmitTask 表示一次事件触发任务
+type EmitTask struct {
 	rec       receiverEntry
+	eventName string
 	payload   string
+	timestamp time.Time
+}
+
+func (e EmitTask) GetName() string {
+	return e.eventName
+}
+func (e EmitTask) GetTimeStamp() int64 {
+	return e.timestamp.Unix()
+}
+func (e EmitTask) GetPayLoad() string {
+	return e.payload
 }
 
 // 默认 Worker 数量与任务队列容量
@@ -47,8 +62,9 @@ const (
 func NewEventBus() *EventBus {
 	bus := &EventBus{
 		events:      make(map[string]*event),
-		taskCh:      make(chan emitTask, defaultTaskQueue),
+		taskCh:      make(chan EmitTask, defaultTaskQueue),
 		workerCount: defaultWorkerCount,
+		eventQueue:  utils.NewRingQueue[*EmitTask](defaultTaskQueue * defaultWorkerCount),
 	}
 	// 启动固定数量的 Worker Goroutine 消费事件任务
 	for i := 0; i < bus.workerCount; i++ {
@@ -57,7 +73,7 @@ func NewEventBus() *EventBus {
 	return bus
 }
 
-// eventWorker 消费事件任务队列，调用 Kernel 的 TriggerCallback
+// eventWorker 消费事件任务队列
 func (bus *EventBus) eventWorker() {
 	for task := range bus.taskCh {
 		func() {
@@ -117,8 +133,6 @@ func (bus *EventBus) RegisterListener(receiver plugins.ListenerRecord, kernel *p
 }
 
 // UnregisterPlugin 移除指定 Kernel + PluginHandle 关联的所有监听器。
-// 必须在插件卸载时调用
-// 后续事件触发时会导致悬空指针访问。
 func (bus *EventBus) UnregisterPlugin(kernel *plugins.Kernel, handle plugins.PluginHandle) {
 	bus.globalLock.Lock()
 	events := make([]*event, 0, len(bus.events))
@@ -141,8 +155,7 @@ func (bus *EventBus) UnregisterPlugin(kernel *plugins.Kernel, handle plugins.Plu
 }
 
 // UnregisterPluginEvents 移除指定 provider 注册的所有事件。
-// Base 插件卸载或加载失败回滚时必须调用，否则事件名被永久占用，
-// 其他插件无法注册同名事件。
+// Base 插件卸载或加载失败回滚时必须调用
 func (bus *EventBus) UnregisterPluginEvents(providerID string) {
 	bus.globalLock.Lock()
 	defer bus.globalLock.Unlock()
@@ -164,11 +177,12 @@ func (bus *EventBus) Emit(eventName string, payload string) {
 	evt.lock.RLock()
 	receivers := make([]receiverEntry, len(evt.receivers))
 	copy(receivers, evt.receivers)
+	// 投递到buffer
+	bus.eventQueue.Push(&EmitTask{rec: receiverEntry{}, eventName: eventName, payload: payload, timestamp: time.Now()})
 	evt.lock.RUnlock()
-	// 将每个接收者的触发任务投递到 Worker 队列，由固定数量的 Worker 消费，
-	// 避免高频事件下无限制创建 Goroutine 导致线程耗尽。
+	// 将每个接收者的触发任务投递到 Worker 队列
 	for _, rec := range receivers {
-		task := emitTask{eventName: eventName, rec: rec, payload: payload}
+		task := EmitTask{eventName: eventName, rec: rec, payload: payload}
 		select {
 		case bus.taskCh <- task:
 		default:
@@ -187,4 +201,12 @@ func (bus *EventBus) GetEventNames() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// GetAllBufferedEvent 获取所有已经缓冲的事件
+func (bus *EventBus) GetAllBufferedEvent() []*EmitTask {
+	if bus.eventQueue.Len() != 0 {
+		return bus.eventQueue.ClearAndFetch()
+	}
+	return nil
 }

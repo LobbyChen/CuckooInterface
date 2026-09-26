@@ -2,7 +2,10 @@ package IPC
 
 import (
 	"CuckooInterface/core/constant"
+	"CuckooInterface/core/event"
+	"CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
+	"CuckooInterface/plugins"
 	"fmt"
 	"sync"
 	"time"
@@ -16,16 +19,32 @@ type IpcInterface struct {
 	km   *plugin_manager.KernelManager
 	pfm  *plugin_manager.PluginFileManager
 	pm   *plugin_manager.PluginManager
+	ebus *event.EventBus
 	once sync.Once
 
+	logger   *logger.Logger
 	listener *pipe.PipeListener
 }
 
-func (ipc *IpcInterface) init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager) {
+type singlePlugin struct {
+	meta     plugins.PluginMetaData
+	plugType constant.PlugType
+	enable   bool
+}
+
+type singleEvent struct {
+	name      string
+	payload   string
+	timestamp int64
+}
+
+func (ipc *IpcInterface) init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, ebus *event.EventBus, logger *logger.Logger) {
 	ipc.once.Do(func() {
 		ipc.km = km
 		ipc.pfm = pfm
 		ipc.pm = pm
+		ipc.logger = logger
+		ipc.ebus = ebus
 	})
 }
 
@@ -85,3 +104,60 @@ func (ipc *IpcInterface) waitForReceivedData() ([]byte, error) {
 	}
 	return recvData, nil
 }
+
+func (ipc *IpcInterface) getAllPlugins() ([]singlePlugin, error) {
+	allFiles := ipc.pfm.GetAllPlugins()
+	ret := make([]singlePlugin, 0, len(allFiles))
+	rMap := make(map[string]*singlePlugin, len(allFiles))
+
+	// 映射slice和map
+	for _, file := range allFiles {
+		plugin := singlePlugin{
+			meta:     file.Meta,
+			plugType: file.Typo,
+			enable:   false,
+		}
+		ret = append(ret, plugin)
+		rMap[file.Meta.ID] = &ret[len(ret)-1]
+	}
+
+	// 获取所有已经启用的插件
+	enabledKernel := ipc.km.GetInitKernelPlugins()
+	enabledPlugin := ipc.pm.ListLoadedPlugins()
+
+	// 筛选并标记
+	for _, p := range enabledKernel {
+		id, _, _, _ := p.Meta()
+		if plugin, ok := rMap[id]; ok {
+			plugin.enable = true
+		}
+	}
+
+	for _, p := range enabledPlugin {
+		id := p.PluginID
+		if plugin, ok := rMap[id]; ok {
+			plugin.enable = true
+		}
+	}
+
+	return ret, nil
+}
+
+func (ipc *IpcInterface) getLog() []logger.SingleLogRecord {
+	return ipc.logger.GetCachedLogs()
+}
+
+func (ipc *IpcInterface) getCachedEvents() []singleEvent {
+	events := ipc.ebus.GetAllBufferedEvent()
+	ret := make([]singleEvent, 0, len(events))
+	for _, e := range events {
+		ret = append(ret, singleEvent{
+			name:      e.GetName(),
+			payload:   e.GetName(),
+			timestamp: e.GetTimeStamp(),
+		})
+	}
+	return ret
+}
+
+func (ipc *IpcInterface) NewKernel()

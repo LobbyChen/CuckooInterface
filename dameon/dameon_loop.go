@@ -12,7 +12,7 @@ import (
 
 func startNormMode() error {
 	// 检查是否以dameon启动
-	if !isDameon() {
+	if !isDaemon() {
 		return fmt.Errorf("Program is not started in dameon")
 	}
 	// 使用go程序以创建包

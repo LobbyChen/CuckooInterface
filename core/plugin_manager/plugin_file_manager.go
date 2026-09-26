@@ -45,6 +45,8 @@ func NewFileManager() *PluginFileManager {
 		isLoaded: false,
 	}
 }
+
+// 解压所有插件
 func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, error) {
 	var succ uint64
 	var Plugins []SinglePluginFile
@@ -91,21 +93,21 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 				dir:  targetDir,
 				Typo: constantPkg.ACTIVE,
 			})
-			err = ExtractHelper(file.fp, targetDir)
+			err = extractHelper(file.fp, targetDir)
 		case baseDir:
 			pm.Base = append(pm.Base, &SinglePluginFile{
 				fp:   file.fp,
 				dir:  targetDir,
 				Typo: constantPkg.BASE,
 			})
-			err = ExtractHelper(file.fp, targetDir)
+			err = extractHelper(file.fp, targetDir)
 		case kernelDir:
 			pm.Kernel = append(pm.Kernel, &SinglePluginFile{
 				fp:   file.fp,
 				dir:  targetDir,
 				Typo: constantPkg.KERNEL,
 			})
-			err = ExtractHelper(file.fp, targetDir)
+			err = extractHelper(file.fp, targetDir)
 		}
 		if err != nil {
 			continue
@@ -114,6 +116,8 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 	}
 	return succ, nil
 }
+
+// 按类型加载插件元数据
 func (pm *PluginFileManager) LoadPluginMeta(typo constantPkg.PlugType) (uint64, error) {
 	var err error
 	var succ uint64
@@ -147,49 +151,169 @@ func (pm *PluginFileManager) LoadPluginMeta(typo constantPkg.PlugType) (uint64, 
 	}
 	return succ, err
 }
+
+// 获取现有插件文件中的Kernel插件
 func (pm *PluginFileManager) GetKernelPlugins() []*SinglePluginFile {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
 	return pm.Kernel
 }
+
+// 获取现有插件文件中的Active插件
 func (pm *PluginFileManager) GetActivePlugins() []*SinglePluginFile {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
 	return pm.Active
 }
+
+// 获取现有插件文件中的Base插件
 func (pm *PluginFileManager) GetBasePlugins() []*SinglePluginFile {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
 	return pm.Base
 }
-func (pm *PluginFileManager) AddPlugins(onPluginAdd func(*SinglePluginFile), singlePlugin ...*SinglePluginFile) {
-	// 先在锁内完成切片追加，再在锁外启动回调 goroutine
-	var toNotify []*SinglePluginFile
-	pm.lock.Lock()
-	for _, plugin := range singlePlugin {
-		switch plugin.Typo {
-		case constantPkg.ACTIVE:
-			pm.Active = append(pm.Active, plugin)
-		case constantPkg.BASE:
-			pm.Base = append(pm.Base, plugin)
-		case constantPkg.KERNEL:
-			pm.Kernel = append(pm.Kernel, plugin)
-		default:
-			continue
-		}
-		toNotify = append(toNotify, plugin)
-	}
-	pm.lock.Unlock()
-	for _, plugin := range toNotify {
-		go onPluginAdd(plugin)
-	}
-}
-func (pm *PluginFileManager) IsLoaded() bool {
-	return pm.isLoaded
+
+// 获取所有现有插件文件
+func (pm *PluginFileManager) GetAllPlugins() []*SinglePluginFile {
+	ret := make([]*SinglePluginFile, 0)
+	ret = append(ret, pm.GetActivePlugins()...)
+	ret = append(ret, pm.GetBasePlugins()...)
+	ret = append(ret, pm.GetKernelPlugins()...)
+	return ret
 }
 
-// ExtractHelper 使用标准库解压，兼容 Windows/PowerShell 创建的 ZIP
-func ExtractHelper(fp, targetFolder string) error {
+// AddExternalPlugin 添加外部未解压的插件文件
+func (pm *PluginFileManager) AddExternalPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
+	// 验证文件是否存在
+	if !utils.IsFileExist(pluginPath) {
+		return fmt.Errorf("plugin file not found: %s", pluginPath)
+	}
+
+	// 获取绝对路径
+	absPath, err := filepath.Abs(pluginPath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	// 获取可执行目录作为运行时目录
+	baseDirForExtract, err := utils.GetExecutableDir()
+	if err != nil {
+		return fmt.Errorf("failed to get executable dir: %w", err)
+	}
+	runtimeDir := filepath.Join(baseDirForExtract, constantPkg.RuntimePluginFolder)
+
+	// 创建目标解压目录
+	targetDir := filepath.Join(runtimeDir, filepath.Base(trimExt(absPath)))
+
+	// 创建 SinglePluginFile 对象
+	spf := &SinglePluginFile{
+		fp:   absPath,
+		dir:  targetDir,
+		Typo: pluginType,
+	}
+
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+
+	// 根据类型添加到对应的列表
+	switch pluginType {
+	case constantPkg.KERNEL:
+		pm.Kernel = append(pm.Kernel, spf)
+	case constantPkg.ACTIVE:
+		pm.Active = append(pm.Active, spf)
+	case constantPkg.BASE:
+		pm.Base = append(pm.Base, spf)
+	default:
+		return fmt.Errorf("unsupported plugin type: %v", pluginType)
+	}
+
+	return nil
+}
+
+// ExtractAndLoadPlugin 解压并加载单个外部插件
+func (pm *PluginFileManager) ExtractAndLoadPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
+	// 先添加插件
+	err := pm.AddExternalPlugin(pluginPath, pluginType)
+	if err != nil {
+		return err
+	}
+
+	// 找到刚添加的插件
+	var targetPlugin *SinglePluginFile
+
+	pm.lock.Lock()
+	switch pluginType {
+	case constantPkg.KERNEL:
+		if len(pm.Kernel) > 0 {
+			targetPlugin = pm.Kernel[len(pm.Kernel)-1]
+		}
+	case constantPkg.ACTIVE:
+		if len(pm.Active) > 0 {
+			targetPlugin = pm.Active[len(pm.Active)-1]
+		}
+	case constantPkg.BASE:
+		if len(pm.Base) > 0 {
+			targetPlugin = pm.Base[len(pm.Base)-1]
+		}
+	}
+	pm.lock.Unlock()
+
+	if targetPlugin == nil {
+		return errors.New("failed to find the added plugin")
+	}
+
+	// 解压插件
+	err = extractHelper(targetPlugin.fp, targetPlugin.dir)
+	if err != nil {
+		return fmt.Errorf("failed to extract plugin: %w", err)
+	}
+
+	// 加载元数据
+	err = loadMeta(targetPlugin)
+	if err != nil {
+		return fmt.Errorf("failed to load plugin metadata: %w", err)
+	}
+
+	pm.lock.Lock()
+	pm.isLoaded = true
+	pm.lock.Unlock()
+
+	return nil
+}
+
+// copyFile 使用 io.Copy 拷贝文件
+func copyFile(src, dst string) error {
+	// 打开源文件
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("无法打开源文件: %w", err)
+	}
+	defer sourceFile.Close()
+
+	// 创建目标文件
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("无法创建目标文件: %w", err)
+	}
+	defer destFile.Close()
+
+	// 拷贝内容
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return fmt.Errorf("拷贝文件失败: %w", err)
+	}
+
+	// 同步到磁盘
+	err = destFile.Sync()
+	if err != nil {
+		return fmt.Errorf("同步文件失败: %w", err)
+	}
+
+	return nil
+}
+
+// extractHelper 使用标准库解压
+func extractHelper(fp, targetFolder string) error {
 	r, err := zip.OpenReader(fp)
 	if err != nil {
 		return fmt.Errorf("open zip failed: %w", err)

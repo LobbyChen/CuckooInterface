@@ -21,9 +21,10 @@ func init() {
 		Compress:      false,
 		ConsoleOutput: true,
 	})
+
 }
 
-func isDameon() bool {
+func isDaemon() bool {
 	switch *s {
 	case constant.DameonModeArgData:
 		return true
