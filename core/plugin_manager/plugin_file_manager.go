@@ -230,8 +230,8 @@ func (pm *PluginFileManager) AddExternalPlugin(pluginPath string, pluginType con
 	return nil
 }
 
-// ExtractAndLoadPlugin 解压并加载单个外部插件
-func (pm *PluginFileManager) ExtractAndLoadPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
+// ExtractAndLoadExternalPlugin 解压并加载单个外部插件
+func (pm *PluginFileManager) ExtractAndLoadExternalPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
 	// 先添加插件
 	err := pm.AddExternalPlugin(pluginPath, pluginType)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"CuckooInterface/core/event"
 	"CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
+	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"fmt"
 	"sync"
@@ -15,7 +16,7 @@ import (
 
 // 与IPC的UI层接口定义
 
-type IpcInterface struct {
+type CoreIpcInterface struct {
 	km   *plugin_manager.KernelManager
 	pfm  *plugin_manager.PluginFileManager
 	pm   *plugin_manager.PluginManager
@@ -38,7 +39,7 @@ type singleEvent struct {
 	timestamp int64
 }
 
-func (ipc *IpcInterface) init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, ebus *event.EventBus, logger *logger.Logger) {
+func (ipc *CoreIpcInterface) init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, ebus *event.EventBus, logger *logger.Logger) {
 	ipc.once.Do(func() {
 		ipc.km = km
 		ipc.pfm = pfm
@@ -48,14 +49,14 @@ func (ipc *IpcInterface) init(km *plugin_manager.KernelManager, pfm *plugin_mana
 	})
 }
 
-func (ipc *IpcInterface) check() bool {
+func (ipc *CoreIpcInterface) check() bool {
 	if ipc.km == nil || ipc.pfm == nil || ipc.pm == nil {
 		return false
 	}
 	return true
 }
 
-func (ipc *IpcInterface) CreatePipe() error {
+func (ipc *CoreIpcInterface) CreatePipe() error {
 	l, err := pipe.Listen(constant.NamePipe)
 	if err != nil {
 		return err
@@ -64,11 +65,11 @@ func (ipc *IpcInterface) CreatePipe() error {
 	return nil
 }
 
-func (ipc *IpcInterface) DestroyPipe() error {
+func (ipc *CoreIpcInterface) DestroyPipe() error {
 	return ipc.listener.Close()
 }
 
-func (ipc *IpcInterface) waitForSentData(data []byte) error {
+func (ipc *CoreIpcInterface) waitForSentData(data []byte) error {
 	conn, err := ipc.listener.Accept()
 	if err != nil {
 		return err
@@ -88,7 +89,7 @@ func (ipc *IpcInterface) waitForSentData(data []byte) error {
 	return nil
 }
 
-func (ipc *IpcInterface) waitForReceivedData() ([]byte, error) {
+func (ipc *CoreIpcInterface) waitForReceivedData() ([]byte, error) {
 	conn, err := ipc.listener.Accept()
 	if err != nil {
 		return nil, err
@@ -105,7 +106,7 @@ func (ipc *IpcInterface) waitForReceivedData() ([]byte, error) {
 	return recvData, nil
 }
 
-func (ipc *IpcInterface) getAllPlugins() ([]singlePlugin, error) {
+func (ipc *CoreIpcInterface) getAllPlugins() ([]singlePlugin, error) {
 	allFiles := ipc.pfm.GetAllPlugins()
 	ret := make([]singlePlugin, 0, len(allFiles))
 	rMap := make(map[string]*singlePlugin, len(allFiles))
@@ -143,11 +144,11 @@ func (ipc *IpcInterface) getAllPlugins() ([]singlePlugin, error) {
 	return ret, nil
 }
 
-func (ipc *IpcInterface) getLog() []logger.SingleLogRecord {
+func (ipc *CoreIpcInterface) getLog() []logger.SingleLogRecord {
 	return ipc.logger.GetCachedLogs()
 }
 
-func (ipc *IpcInterface) getCachedEvents() []singleEvent {
+func (ipc *CoreIpcInterface) getCachedEvents() []singleEvent {
 	events := ipc.ebus.GetAllBufferedEvent()
 	ret := make([]singleEvent, 0, len(events))
 	for _, e := range events {
@@ -160,4 +161,15 @@ func (ipc *IpcInterface) getCachedEvents() []singleEvent {
 	return ret
 }
 
-func (ipc *IpcInterface) NewKernel()
+func (ipc *CoreIpcInterface) NewPlugin(pluginType constant.PlugType, fp string) error {
+	// 检查文件是否存在
+	if !utils.IsFileExist(fp) {
+		return fmt.Errorf("file %s not exist", fp)
+	}
+	// 加载
+	return ipc.pfm.ExtractAndLoadExternalPlugin(fp, pluginType)
+}
+
+func (ipc *CoreIpcInterface) UnloadPlugin(plugType constant.PlugType, id string) error {
+	return nil
+}
