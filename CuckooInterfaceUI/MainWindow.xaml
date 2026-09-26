@@ -30,6 +30,7 @@
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="概览" Icon="{ui:SymbolIcon Home24}" TargetPageType="pages:HomePage" />
                 <ui:NavigationViewItem Content="插件" Icon="{ui:SymbolIcon Diversity24}" TargetPageType="pages:PluginsPage" />
+                <ui:NavigationViewItem Content="事件" Icon="{ui:SymbolIcon Pulse24}" TargetPageType="pages:EventsPage" />
                 <ui:NavigationViewItem Content="配置" Icon="{ui:SymbolIcon Settings24}" TargetPageType="pages:ConfigPage" />
                 <ui:NavigationViewItem Content="日志" Icon="{ui:SymbolIcon DocumentText24}" TargetPageType="pages:LogsPage" />
             </ui:NavigationView.MenuItems>
