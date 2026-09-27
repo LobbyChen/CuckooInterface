@@ -170,6 +170,41 @@ func (ipc *CoreIpcInterface) NewPlugin(pluginType constant.PlugType, fp string) 
 	return ipc.pfm.ExtractAndLoadExternalPlugin(fp, pluginType)
 }
 
+func (ipc *CoreIpcInterface) LoadPlugin(plugType constant.PlugType, id string) error {
+	// 加载插件
+	if plugType != constant.ACTIVE || plugType != constant.BASE || plugType != constant.KERNEL {
+		return fmt.Errorf("unknown plugin type %v", plugType)
+	}
+	files := ipc.pfm.GetAllPlugins()
+	var file *plugin_manager.SinglePluginFile
+	// 遍历筛选
+	for i := range files {
+		if files[i].Meta.ID == id {
+			file = files[i]
+		}
+	}
+	if file == nil {
+		return fmt.Errorf("plugin not found")
+	}
+	return ipc.pm.LoadPlugin(file)
+}
+
 func (ipc *CoreIpcInterface) UnloadPlugin(plugType constant.PlugType, id string) error {
-	return nil
+	// 卸载插件
+	if plugType != constant.ACTIVE || plugType != constant.BASE || plugType != constant.KERNEL {
+		return fmt.Errorf("unknown plugin type %v", plugType)
+	}
+	files := ipc.pfm.GetAllPlugins()
+	var file *plugin_manager.SinglePluginFile
+	// 遍历筛选
+	for i := range files {
+		if files[i].Meta.ID == id {
+			file = files[i]
+		}
+	}
+	if file == nil {
+		return fmt.Errorf("plugin not found")
+	}
+	// 卸载
+	return ipc.pm.UnloadPlugin(file)
 }
