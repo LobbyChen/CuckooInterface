@@ -36,12 +36,12 @@ func (ipc *DaemonIpcInterface) Init(logger *logger.Logger, startCore, stopCore C
 
 // CreatePipe 创建命名管道监听器
 func (ipc *DaemonIpcInterface) CreatePipe() error {
-	l, err := pipe.Listen(constant.NamePipe)
+	l, err := pipe.Listen(constant.DaemonNamePipe)
 	if err != nil {
-		return fmt.Errorf("failed to listen on pipe %s: %w", constant.NamePipe, err)
+		return fmt.Errorf("failed to listen on pipe %s: %w", constant.CoreNamePipe, err)
 	}
 	ipc.listener = l
-	ipc.logger.Infof("Daemon IPC listener created on pipe: %s", constant.NamePipe)
+	ipc.logger.Infof("Daemon IPC listener created on pipe: %s", constant.CoreNamePipe)
 	return nil
 }
 

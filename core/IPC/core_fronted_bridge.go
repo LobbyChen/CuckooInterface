@@ -57,7 +57,7 @@ func (ipc *CoreIpcInterface) check() bool {
 }
 
 func (ipc *CoreIpcInterface) CreatePipe() error {
-	l, err := pipe.Listen(constant.NamePipe)
+	l, err := pipe.Listen(constant.CoreNamePipe)
 	if err != nil {
 		return err
 	}
