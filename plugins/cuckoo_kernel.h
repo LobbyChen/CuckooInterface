@@ -36,16 +36,15 @@ typedef struct {
    */
   void (*panic)(const char* reason);
 } CuckooHostAPI;
-// ============================================================================
-// 3. Kernel 插件接口定义 (Kernel -> Host)
-// ============================================================================
+
+// Kernel 插件接口定义 (Kernel -> Host)
 typedef struct {
-  // [元数据]
+  // 元数据
   const char* kernel_id;    // 唯一标识，如 "com.cuckoo.kernel.lua"
   const char* kernel_name;  // 显示名称
   const char* version;      // 版本号
   const char* runtime;      // Kernel 提供的运行时类型
-  // [生命周期管理]
+  // 生命周期管理
   /**
    * @brief 初始化运行时环境
    * @param api Host 提供的 API 表
@@ -82,9 +81,7 @@ typedef struct {
    */
   void (*shutdown_runtime)(void);
 } CuckooKernelInterface;
-// ============================================================================
-// 4. 导出入口
-// ============================================================================
+// 导出入口
 /**
  * @brief 获取内核接口
  */

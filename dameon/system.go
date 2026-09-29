@@ -2,6 +2,7 @@ package dameon
 
 import (
 	"CuckooInterface/core/constant"
+	"os"
 	"sync"
 	"time"
 )
@@ -12,6 +13,8 @@ type StatusManager struct {
 	startTime  time.Time
 	version    string
 	launchType string
+	uiProcess  *os.Process
+	uiRunning  bool
 }
 
 var (
@@ -25,56 +28,43 @@ func GetStatusManager() *StatusManager {
 		sm := &StatusManager{
 			startTime: time.Now(),
 		}
-
 		// 初始化启动类型
 		if isDaemon() {
 			sm.launchType = constant.DameonModeArgData
 		} else {
 			sm.launchType = constant.NormalModeArgData
 		}
-
 		statusManagerInstance = sm
 	})
 	return statusManagerInstance
 }
 
-// GetStartedTime 获取程序运行时长
-func (sm *StatusManager) GetStartedTime() time.Duration {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return time.Since(sm.startTime)
-}
-
-// SetVersion 设置版本号
-func (sm *StatusManager) SetVersion(v string) {
+// SetUIProcess 记录 UI 进程并标记为运行中
+func (sm *StatusManager) SetUIProcess(p *os.Process) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	sm.version = v
+	sm.uiProcess = p
+	sm.uiRunning = p != nil
 }
 
-// GetVersion 获取版本号
-func (sm *StatusManager) GetVersion() string {
+// IsUIRunning 检查 UI 是否正在运行
+func (sm *StatusManager) IsUIRunning() bool {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	return sm.version
+	return sm.uiRunning
 }
 
-// GetLaunchType 获取启动类型 (daemon/normal)
-func (sm *StatusManager) GetLaunchType() string {
+// GetUIProcess 获取当前 UI 进程句柄
+func (sm *StatusManager) GetUIProcess() *os.Process {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	return sm.launchType
+	return sm.uiProcess
 }
 
-// GetStatusMap 获取所有状态的快照，方便 IPC 或日志使用
-func (sm *StatusManager) GetStatusMap() map[string]interface{} {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	return map[string]interface{}{
-		"version":    sm.version,
-		"uptime":     time.Since(sm.startTime).String(),
-		"start_time": sm.startTime.Format(time.RFC3339),
-		"mode":       sm.launchType,
-	}
+// ClearUIProcess 清除 UI 进程记录（进程退出后调用）
+func (sm *StatusManager) ClearUIProcess() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.uiProcess = nil
+	sm.uiRunning = false
 }
