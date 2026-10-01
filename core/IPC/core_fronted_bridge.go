@@ -1,12 +1,14 @@
 package IPC
 
 import (
+	"CuckooInterface/core/config"
 	"CuckooInterface/core/constant"
 	"CuckooInterface/core/event"
 	"CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -209,4 +211,24 @@ func (ipc *CoreIpcInterface) UnloadPlugin(plugType constant.PlugType, id string)
 	return ipc.pm.UnloadPlugin(file)
 }
 
-func (ipc *CoreIpcInterface) GetGlobalConfigPage()
+// GetGlobalConfigPage 返回后端动态配置的设置面板（JSON）。
+// 注意：外观页面由前端固定渲染，不包含在此面板中。
+func (ipc *CoreIpcInterface) GetGlobalConfigPage() ([]byte, error) {
+	return json.Marshal(config.BuildSettingsPanel())
+}
+
+// GetAppearanceSettings 返回外观设置的当前值（JSON）。
+func (ipc *CoreIpcInterface) GetAppearanceSettings() ([]byte, error) {
+	return json.Marshal(config.GetAppearanceSettings())
+}
+
+// SaveSettings 保存设置，data 为 key-value JSON 映射。
+// 外观 key（theme/accentColor/fontScale）存入独立存储，其余更新 SettingPanel。
+func (ipc *CoreIpcInterface) SaveSettings(data []byte) error {
+	var values map[string]interface{}
+	if err := json.Unmarshal(data, &values); err != nil {
+		return fmt.Errorf("invalid settings payload: %w", err)
+	}
+	config.SaveSettings(values)
+	return nil
+}
