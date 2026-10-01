@@ -42,8 +42,8 @@ func startNormMode() error {
 	return nil
 }
 
-// startUI 拉起同目录下的 CuckooInterfaceUI.exe
-func startUI() error {
+// StartUI 拉起同目录下的 CuckooInterfaceUI.exe
+func StartUI() error {
 	sm := GetStatusManager()
 
 	// 防重复启动：如果 UI 已在运行则直接返回
@@ -89,8 +89,8 @@ func startUI() error {
 	return nil
 }
 
-// stopUI 强制终止 UI 进程
-func stopUI() error {
+// StopUI 强制终止 UI 进程
+func StopUI() error {
 	sm := GetStatusManager()
 	if !sm.IsUIRunning() {
 		return nil

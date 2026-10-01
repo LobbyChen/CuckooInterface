@@ -17,7 +17,6 @@ import (
 type CoreControlFunc func() error
 
 // DaemonIpcInterface 定义与守护进程/UI层交互的接口
-// 负责 Core 进程的生命周期控制：启动、停止、重启
 type DaemonIpcInterface struct {
 	logger    *logger.Logger
 	listener  *pipe.PipeListener
