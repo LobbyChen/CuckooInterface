@@ -1,7 +1,8 @@
-package IPC
+package dameon
 
 import (
 	"CuckooInterface/core/constant"
+	"CuckooInterface/core/ipc"
 	"CuckooInterface/core/logger"
 	"fmt"
 	"net"
@@ -83,7 +84,7 @@ func (ipc *DaemonIpcInterface) HandleRequest() {
 			}
 
 			// 读取数据包
-			data, err := ReadSinglePacket(c)
+			data, err := IPC.ReadSinglePacket(c)
 			if err != nil {
 				ipc.logger.Errorf("Daemon IPC read error: %v", err)
 				return
@@ -99,7 +100,7 @@ func (ipc *DaemonIpcInterface) HandleRequest() {
 			}
 
 			// 发送响应
-			sentData := GeneralPkg(response)
+			sentData := IPC.GeneralPkg(response)
 			_, err = c.Write(sentData)
 			if err != nil {
 				ipc.logger.Errorf("Daemon IPC write error: %v", err)

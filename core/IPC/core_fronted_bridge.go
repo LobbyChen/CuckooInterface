@@ -163,7 +163,7 @@ func (ipc *CoreIpcInterface) getCachedEvents() []singleEvent {
 	return ret
 }
 
-func (ipc *CoreIpcInterface) NewPlugin(pluginType constant.PlugType, fp string) error {
+func (ipc *CoreIpcInterface) newPlugin(pluginType constant.PlugType, fp string) error {
 	// 检查文件是否存在
 	if !utils.IsFileExist(fp) {
 		return fmt.Errorf("file %s not exist", fp)
@@ -172,7 +172,7 @@ func (ipc *CoreIpcInterface) NewPlugin(pluginType constant.PlugType, fp string) 
 	return ipc.pfm.ExtractAndLoadExternalPlugin(fp, pluginType)
 }
 
-func (ipc *CoreIpcInterface) LoadPlugin(plugType constant.PlugType, id string) error {
+func (ipc *CoreIpcInterface) loadPlugin(plugType constant.PlugType, id string) error {
 	// 加载插件
 	if plugType != constant.ACTIVE || plugType != constant.BASE || plugType != constant.KERNEL {
 		return fmt.Errorf("unknown plugin type %v", plugType)
@@ -211,22 +211,23 @@ func (ipc *CoreIpcInterface) UnloadPlugin(plugType constant.PlugType, id string)
 	return ipc.pm.UnloadPlugin(file)
 }
 
-// GetGlobalConfigPage 返回后端动态配置的设置面板。
-func (ipc *CoreIpcInterface) GetGlobalConfigPage() ([]byte, error) {
+func (ipc *CoreIpcInterface) getGlobalConfigPage() ([]byte, error) {
 	return json.Marshal(config.BuildSettingsPanel())
 }
 
-// GetAppearanceSettings 返回外观设置的当前值。
-func (ipc *CoreIpcInterface) GetAppearanceSettings() ([]byte, error) {
-	return json.Marshal(config.GetAppearanceSettings())
-}
-
-// SaveSettings 保存设置，data 为 key-value JSON 映射。
-func (ipc *CoreIpcInterface) SaveSettings(data []byte) error {
+func (ipc *CoreIpcInterface) saveSettings(data []byte) error {
 	var values map[string]interface{}
 	if err := json.Unmarshal(data, &values); err != nil {
 		return fmt.Errorf("invalid settings payload: %w", err)
 	}
 	config.SaveSettings(values)
 	return nil
+}
+
+func (ipc *CoreIpcInterface) getEvents() []string {
+	return ipc.ebus.GetEventNames()
+}
+
+func (ipc *CoreIpcInterface) publishEvent(name, payload string) {
+	ipc.ebus.Emit(name, payload)
 }

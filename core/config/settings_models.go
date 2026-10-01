@@ -7,9 +7,7 @@ import (
 )
 
 /*
-
  * Editor
-
  */
 
 type EditorType string
