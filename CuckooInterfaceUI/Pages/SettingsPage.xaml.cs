@@ -155,9 +155,8 @@ namespace CuckooInterfaceUI.Pages
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 Padding = new Thickness(0, 8, 0, 0)
             };
-            // 修复：子控件（TextBox/Slider/ComboBox）会吞掉 MouseWheel，
-            // 用 PreviewMouseWheel 隧道事件手动滚动，保证鼠标在任何控件上都能滚动页面
-            scrollViewer.PreviewMouseWheel += ScrollViewer_PreviewMouseWheel;
+            // 启用平滑滚动行为（替代直接跳转，滚轮逐帧插值过渡）
+            Behaviors.SmoothScrollBehavior.SetIsEnabled(scrollViewer, true);
 
             var stack = new StackPanel { Margin = new Thickness(0, 0, 0, 16) };
 
@@ -169,41 +168,6 @@ namespace CuckooInterfaceUI.Pages
             scrollViewer.Content = stack;
             tabItem.Content = scrollViewer;
             return tabItem;
-        }
-
-        /// <summary>
-        /// 鼠标滚轮在子控件上时，手动滚动父级 ScrollViewer。
-        /// 仅当子控件自身不能滚动时才转发，避免破坏可滚动子控件（如多行 TextBox）的内部滚动。
-        /// </summary>
-        private static void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            if (sender is not ScrollViewer scrollViewer) return;
-
-            // 若事件源是自身可滚动的控件且其内部可滚动，则让子控件自己处理
-            if (e.OriginalSource is DependencyObject src)
-            {
-                var childScroll = FindParent<ScrollViewer>(src);
-                if (childScroll != null && childScroll != scrollViewer &&
-                    (childScroll.ExtentHeight > childScroll.ViewportHeight))
-                {
-                    // 子 ScrollViewer 有内容可滚动，不拦截
-                    return;
-                }
-            }
-
-            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - e.Delta);
-            e.Handled = true;
-        }
-
-        private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
-        {
-            var parent = VisualTreeHelper.GetParent(child);
-            while (parent != null)
-            {
-                if (parent is T typed) return typed;
-                parent = VisualTreeHelper.GetParent(parent);
-            }
-            return null;
         }
 
         // ===== 构建分区卡片 =====
