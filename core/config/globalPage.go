@@ -1,5 +1,67 @@
 package config
 
+import "sync"
+
+// 外观设置为前端固定页面，其值由后端单独存储（不在 SettingPanel 结构中）。
+// 与前端约定的 key：theme / accentColor / fontScale
+var (
+	appearanceMu     sync.RWMutex
+	appearanceValues = map[string]interface{}{
+		"theme":       "system",
+		"accentColor": "#0078D4",
+		"fontScale":   100.0,
+	}
+
+	// appearanceKeys 用于 SaveSettings 时区分存储目标
+	appearanceKeys = map[string]struct{}{
+		"theme":       {},
+		"accentColor": {},
+		"fontScale":   {},
+	}
+)
+
+// GetAppearanceSettings 返回外观设置的当前值（返回副本，避免外部修改内部状态）。
+func GetAppearanceSettings() map[string]interface{} {
+	appearanceMu.RLock()
+	defer appearanceMu.RUnlock()
+	out := make(map[string]interface{}, len(appearanceValues))
+	for k, v := range appearanceValues {
+		out[k] = v
+	}
+	return out
+}
+
+// SaveSettings 按 key 更新设置值。
+// 外观设置（theme/accentColor/fontScale）存入 appearanceValues，
+// 其余 key 在 SettingPanel 中查找并更新对应 Setting 的值。
+func SaveSettings(values map[string]interface{}) {
+	panel := BuildSettingsPanel()
+	for k, v := range values {
+		if _, ok := appearanceKeys[k]; ok {
+			appearanceMu.Lock()
+			appearanceValues[k] = v
+			appearanceMu.Unlock()
+			continue
+		}
+		setSettingValue(panel, k, v)
+	}
+}
+
+// setSettingValue 在 SettingPanel 中递归查找并更新指定 key 的 Setting 值。
+func setSettingValue(panel SettingPanel, key string, value interface{}) {
+	for i := range panel.Pages {
+		for j := range panel.Pages[i].Sections {
+			for k := range panel.Pages[i].Sections[j].Settings {
+				s := &panel.Pages[i].Sections[j].Settings[k]
+				if (*s).Key() == key {
+					_ = (*s).SetValue(value)
+					return
+				}
+			}
+		}
+	}
+}
+
 func BuildSettingsPanel() SettingPanel {
 	return SettingPanel{
 		Pages: []SettingPage{
@@ -70,83 +132,7 @@ func BuildSettingsPanel() SettingPanel {
 				},
 			},
 
-			// 2. 外观 (Appearance)
-			{
-				Key:  "appearance",
-				Name: "外观",
-				Sections: []SettingSection{
-					{
-						Key:  "theme",
-						Name: "主题",
-						Settings: []Setting{
-							NewSetting(
-								SettingDefinition{
-									Key:                "theme",
-									Name:               "应用主题",
-									Description:        "选择浅色或深色模式",
-									DisplayName:        true,
-									DisplayDescription: true,
-									Editor: SelectEditor{
-										Options: []TextOption{
-											{Value: "light", Text: "浅色"},
-											{Value: "dark", Text: "深色"},
-											{Value: "system", Text: "跟随系统"},
-										},
-									},
-								},
-								"system",
-								"system",
-							),
-						},
-					},
-					{
-						Key:  "accentColor",
-						Name: "强调色",
-						Settings: []Setting{
-							NewSetting(
-								SettingDefinition{
-									Key:                "accentColor",
-									Name:               "强调色",
-									Description:        "选择界面的主要强调颜色",
-									DisplayName:        true,
-									DisplayDescription: false,
-									Editor: ColorEditor{
-										Colors:  []string{"#0078D4", "#E81123", "#107C10", "#FFB900", "#881798"},
-										Columns: 5,
-									},
-								},
-								"#0078D4",
-								"#0078D4",
-							),
-						},
-					},
-					{
-						Key:  "fontScale",
-						Name: "字号缩放",
-						Settings: []Setting{
-							NewSetting(
-								SettingDefinition{
-									Key:                "fontScale",
-									Name:               "字号缩放",
-									Description:        "调整界面字体大小比例",
-									DisplayName:        true,
-									DisplayDescription: false,
-									Editor: SliderEditor{
-										Min:  50,
-										Max:  200,
-										Step: 5,
-										Unit: "%",
-									},
-								},
-								100.0,
-								100.0,
-							),
-						},
-					},
-				},
-			},
-
-			// 3. 日志 (Logging)
+			// 2. 日志 (Logging)
 			{
 				Key:  "logging",
 				Name: "日志",
@@ -220,7 +206,7 @@ func BuildSettingsPanel() SettingPanel {
 				},
 			},
 
-			// 4. 插件 (Plugins)
+			// 3. 插件 (Plugins)
 			{
 				Key:  "plugins",
 				Name: "插件",
