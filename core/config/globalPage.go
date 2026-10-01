@@ -1,9 +1,48 @@
 package config
 
+import "sync"
+
+// 外观设置为前端固定页面，其值由后端单独存储（不在 SettingPanel 结构中）。
+// 与前端约定的 key：theme / accentColor / fontScale
+var (
+	appearanceMu     sync.RWMutex
+	appearanceValues = map[string]interface{}{
+		"theme":       "system",
+		"accentColor": "#0078D4",
+		"fontScale":   100.0,
+	}
+
+	// appearanceKeys 用于 SaveSettings 时区分存储目标
+	appearanceKeys = map[string]struct{}{
+		"theme":       {},
+		"accentColor": {},
+		"fontScale":   {},
+	}
+)
+
+// GetAppearanceSettings 返回外观设置的当前值（返回副本，避免外部修改内部状态）。
+func GetAppearanceSettings() map[string]interface{} {
+	appearanceMu.RLock()
+	defer appearanceMu.RUnlock()
+	out := make(map[string]interface{}, len(appearanceValues))
+	for k, v := range appearanceValues {
+		out[k] = v
+	}
+	return out
+}
+
 // SaveSettings 按 key 更新设置值。
+// 外观设置（theme/accentColor/fontScale）存入 appearanceValues，
+// 其余 key 在 SettingPanel 中查找并更新对应 Setting 的值。
 func SaveSettings(values map[string]interface{}) {
 	panel := BuildSettingsPanel()
 	for k, v := range values {
+		if _, ok := appearanceKeys[k]; ok {
+			appearanceMu.Lock()
+			appearanceValues[k] = v
+			appearanceMu.Unlock()
+			continue
+		}
 		setSettingValue(panel, k, v)
 	}
 }

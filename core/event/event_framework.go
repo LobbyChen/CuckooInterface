@@ -203,6 +203,35 @@ func (bus *EventBus) GetEventNames() []string {
 	return names
 }
 
+// RegisteredEventInfo 描述一个已注册事件的概要信息（供 IPC 返回给前端）
+type RegisteredEventInfo struct {
+	Name          string
+	ProviderID    string
+	ListenerCount int
+}
+
+// GetRegisteredEventsInfo 返回所有已注册事件的名称、提供者和监听者数量
+func (bus *EventBus) GetRegisteredEventsInfo() []RegisteredEventInfo {
+	bus.globalLock.Lock()
+	events := make([]*event, 0, len(bus.events))
+	for _, evt := range bus.events {
+		events = append(events, evt)
+	}
+	bus.globalLock.Unlock()
+
+	infos := make([]RegisteredEventInfo, 0, len(events))
+	for _, evt := range events {
+		evt.lock.RLock()
+		infos = append(infos, RegisteredEventInfo{
+			Name:          evt.name,
+			ProviderID:    evt.providerID,
+			ListenerCount: len(evt.receivers),
+		})
+		evt.lock.RUnlock()
+	}
+	return infos
+}
+
 // GetAllBufferedEvent 获取所有已经缓冲的事件
 func (bus *EventBus) GetAllBufferedEvent() []*EmitTask {
 	if bus.eventQueue.Len() != 0 {

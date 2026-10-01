@@ -4,11 +4,13 @@ import (
 	"CuckooInterface/core/config"
 	"CuckooInterface/core/constant"
 	"CuckooInterface/core/event"
+	IPC "CuckooInterface/core/ipc"
 	ckl "CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -115,6 +117,16 @@ func main() {
 			logger.Infof("Plugin %s loaded and registered", p.Name())
 		}
 	}
+
+	// 启动 IPC 命名管道服务（供前端 UI 调用）
+	ipc := &IPC.CoreIpcInterface{}
+	ipc.Init(kernelMgr, fileMgr, pm, ebus, logger)
+	if err := ipc.CreatePipe(); err != nil {
+		logger.Fatal(fmt.Sprintf("Failed to create IPC pipe: %v", err))
+	}
+	logger.Info("IPC pipe server started, waiting for frontend connections...")
+	go ipc.ServeLoop()
+
 	// 退出监听
 	logger.Info("CuckooInterface is now running. Press Ctrl+C to exit.")
 	sigCh := make(chan os.Signal, 1)

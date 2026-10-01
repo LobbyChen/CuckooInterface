@@ -182,6 +182,37 @@ func (pm *PluginFileManager) GetAllPlugins() []*SinglePluginFile {
 	return ret
 }
 
+// RemovePlugin 按 ID 移除插件，并清理其解压目录
+func (pm *PluginFileManager) RemovePlugin(id string) error {
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+
+	var target *SinglePluginFile
+
+	for _, l := range []*[]*SinglePluginFile{&pm.Kernel, &pm.Active, &pm.Base} {
+		for i, spf := range *l {
+			if spf.Meta.ID == id {
+				target = spf
+				*l = append((*l)[:i], (*l)[i+1:]...)
+				break
+			}
+		}
+		if target != nil {
+			break
+		}
+	}
+
+	if target == nil {
+		return fmt.Errorf("plugin %s not found", id)
+	}
+
+	// 清理解压目录
+	if target.dir != "" {
+		_ = os.RemoveAll(target.dir)
+	}
+	return nil
+}
+
 // AddExternalPlugin 添加外部未解压的插件文件
 func (pm *PluginFileManager) AddExternalPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
 	// 验证文件是否存在

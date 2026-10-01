@@ -42,8 +42,6 @@ func startNormMode() error {
 	return nil
 }
 
-// ==================== 新增：UI 进程管理 ====================
-
 // startUI 拉起同目录下的 CuckooInterfaceUI.exe
 func startUI() error {
 	sm := GetStatusManager()
