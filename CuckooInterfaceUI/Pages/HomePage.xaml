@@ -8,7 +8,27 @@
       d:DesignHeight="600" d:DesignWidth="900"
       Title="HomePage">
 
-    <StackPanel Margin="24">
+    <Page.Resources>
+        <Storyboard x:Key="PageEntranceAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                             From="20" To="0" Duration="0:0:0.35">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+    </Page.Resources>
+
+    <StackPanel Margin="24" Opacity="0">
+        <StackPanel.RenderTransform>
+            <TranslateTransform Y="20" />
+        </StackPanel.RenderTransform>
+        <StackPanel.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
+            </EventTrigger>
+        </StackPanel.Triggers>
         <!-- 标题区 -->
         <TextBlock Text="概览" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="White"/>
         <TextBlock Text="CuckooInterface 运行状态一览" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,24" />
@@ -29,24 +49,24 @@
             <ui:Card Margin="6,0,6,0" Padding="16" VerticalAlignment="Stretch">
                 <StackPanel>
                     <TextBlock Text="内核" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <TextBlock Text="2" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
-                    <TextBlock Text="Lua · Python" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
+                    <TextBlock x:Name="KernelCount" Text="0" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
+                    <TextBlock x:Name="KernelNames" Text="-" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
                 </StackPanel>
             </ui:Card>
 
             <ui:Card Margin="6,0,6,0" Padding="16" VerticalAlignment="Stretch">
                 <StackPanel>
                     <TextBlock Text="基础插件" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <TextBlock Text="5" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
-                    <TextBlock Text="全部在线" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
+                    <TextBlock x:Name="BasePluginCount" Text="0" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
+                    <TextBlock x:Name="BasePluginStatus" Text="-" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
                 </StackPanel>
             </ui:Card>
 
             <ui:Card Margin="12,0,0,0" Padding="16" VerticalAlignment="Stretch">
                 <StackPanel>
                     <TextBlock Text="应用插件" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <TextBlock Text="3" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
-                    <TextBlock Text="2 运行中" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
+                    <TextBlock x:Name="ActivePluginCount" Text="0" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
+                    <TextBlock x:Name="ActivePluginStatus" Text="-" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
                 </StackPanel>
             </ui:Card>
         </UniformGrid>
@@ -56,52 +76,26 @@
             <StackPanel>
                 <DockPanel Margin="0,0,0,12">
                     <TextBlock Text="最近事件" FontSize="16" FontWeight="SemiBold" />
-                    <ui:Button Content="查看全部" Appearance="Secondary" FontSize="12" Padding="10,4" HorizontalAlignment="Right" DockPanel.Dock="Right" />
+                    <ui:Button Content="查看全部" Appearance="Secondary" FontSize="12" Padding="10,4" HorizontalAlignment="Right" DockPanel.Dock="Right" Click="ViewAllEvents_Click" />
                 </DockPanel>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="10:24:18" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="foundation.device.connected" Padding="0,6" />
-                    <Border Grid.Row="0" Grid.Column="2" Background="#43B581" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <TextBlock Text="正常" Foreground="White" FontSize="11" />
-                    </Border>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="10:23:02" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="foundation.process.exited" Padding="0,6" />
-                    <Border Grid.Row="1" Grid.Column="2" Background="#F5A623" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <TextBlock Text="警告" Foreground="White" FontSize="11" />
-                    </Border>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="10:20:45" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="network.lan.changed" Padding="0,6" />
-                    <Border Grid.Row="2" Grid.Column="2" Background="#43B581" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <TextBlock Text="正常" Foreground="White" FontSize="11" />
-                    </Border>
-
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="10:18:30" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="foundation.device.connected" Padding="0,6" />
-                    <Border Grid.Row="3" Grid.Column="2" Background="#43B581" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <TextBlock Text="正常" Foreground="White" FontSize="11" />
-                    </Border>
-
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="10:15:12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
-                    <TextBlock Grid.Row="4" Grid.Column="1" Text="plugin.load.error" Padding="0,6" />
-                    <Border Grid.Row="4" Grid.Column="2" Background="#E5484D" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <TextBlock Text="错误" Foreground="White" FontSize="11" />
-                    </Border>
-                </Grid>
+                <ItemsControl x:Name="RecentEventsList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="100" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
+                                <TextBlock Grid.Column="1" Text="{Binding EventName}" Padding="0,6" />
+                                <Border Grid.Column="2" Background="{Binding LevelColor}" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding LevelText}" Foreground="White" FontSize="11" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </ui:Card>
 
@@ -122,13 +116,13 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="版本" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="v0.1.0-alpha" Padding="0,6" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="VersionText" Text="-" Padding="0,6" />
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="运行时长" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="02:34:17" Padding="0,6" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="UptimeText" Text="-" Padding="0,6" />
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="启动模式" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Normal" Padding="0,6" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ModeText" Text="-" Padding="0,6" />
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="IPC 管道" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="\\.\pipe\CuckooInterfaceBridge" Padding="0,6" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="IpcPipeText" Text="-" Padding="0,6" />
                     </Grid>
                 </StackPanel>
             </ui:Card>
@@ -137,12 +131,12 @@
                 <StackPanel>
                     <TextBlock Text="快捷操作" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <ui:Button Content="重启服务" Appearance="Primary" Margin="0,0,8,0" />
-                        <ui:Button Content="重载插件" Appearance="Secondary" Margin="0,0,8,0" />
+                        <ui:Button Content="重启服务" Appearance="Primary" Margin="0,0,8,0" Click="RestartService_Click" />
+                        <ui:Button Content="重载插件" Appearance="Secondary" Margin="0,0,8,0" Click="ReloadPlugins_Click" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
-                        <ui:Button Content="打开日志" Appearance="Secondary" Margin="0,0,8,0" />
-                        <ui:Button Content="停止服务" Appearance="Danger" />
+                        <ui:Button Content="打开日志" Appearance="Secondary" Margin="0,0,8,0" Click="OpenLogs_Click" />
+                        <ui:Button Content="停止服务" Appearance="Danger" Click="StopService_Click" />
                     </StackPanel>
                 </StackPanel>
             </ui:Card>

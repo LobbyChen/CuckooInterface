@@ -5,7 +5,27 @@
       Title="LogsPage"
       Background="{DynamicResource ApplicationBackgroundBrush}">
 
-    <Grid Margin="24">
+    <Page.Resources>
+        <Storyboard x:Key="PageEntranceAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                             From="20" To="0" Duration="0:0:0.35">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+    </Page.Resources>
+
+    <Grid Margin="24" Opacity="0">
+        <Grid.RenderTransform>
+            <TranslateTransform Y="20" />
+        </Grid.RenderTransform>
+        <Grid.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
+            </EventTrigger>
+        </Grid.Triggers>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -34,34 +54,40 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 
-                <!-- 搜索框 (使用 ToolTip 替代 PlaceholderText 以避免兼容性问题) -->
-                <ui:TextBox Grid.Column="0" 
-                            ToolTip="搜索日志内容或来源..." 
-                            Icon="{ui:SymbolIcon Search24}" 
+                <!-- 搜索框 -->
+                <ui:TextBox Grid.Column="0"
+                            x:Name="SearchBox"
+                            ToolTip="搜索日志内容或来源..."
+                            Icon="{ui:SymbolIcon Search24}"
                             Margin="0,0,16,0"
-                            VerticalAlignment="Center"/>
-                
-                <!-- 级别过滤 (使用 SelectedIndex 替代 PlaceholderText) -->
-                <ComboBox Grid.Column="1" 
+                            VerticalAlignment="Center"
+                            TextChanged="SearchBox_TextChanged" />
+
+                <!-- 级别过滤 -->
+                <ComboBox Grid.Column="1"
+                          x:Name="LevelFilter"
                           SelectedIndex="0"
                           Margin="0,0,16,0"
-                          VerticalAlignment="Center">
+                          VerticalAlignment="Center"
+                          SelectionChanged="LevelFilter_SelectionChanged">
                     <ComboBoxItem Content="所有级别" IsSelected="True"/>
                     <ComboBoxItem Content="INFO"/>
                     <ComboBoxItem Content="WARN"/>
                     <ComboBoxItem Content="ERROR"/>
-                    <ComboBoxItem Content="FATAL"/>
+                    <ComboBoxItem Content="DEBUG"/>
                 </ComboBox>
 
                 <!-- 操作按钮组 -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                    <ui:Button Appearance="Secondary" 
-                               Icon="{ui:SymbolIcon Delete24}" 
-                               Content="清空日志" 
-                               Margin="0,0,8,0"/>
-                    <ui:Button Appearance="Primary" 
-                               Icon="{ui:SymbolIcon ArrowExportLtr24}" 
-                               Content="导出日志"/>
+                    <ui:Button Appearance="Secondary"
+                               Icon="{ui:SymbolIcon Delete24}"
+                               Content="清空日志"
+                               Margin="0,0,8,0"
+                               Click="ClearLogs_Click" />
+                    <ui:Button Appearance="Primary"
+                               Icon="{ui:SymbolIcon ArrowExportLtr24}"
+                               Content="导出日志"
+                               Click="ExportLogs_Click" />
                 </StackPanel>
             </Grid>
         </ui:CardControl>
@@ -94,7 +120,7 @@
                 </DataGridTextColumn>
 
                 <!-- 级别列 (带颜色) -->
-                <DataGridTextColumn Header="级别" Binding="{Binding Level}" Width="100">
+                <DataGridTextColumn Header="级别" Binding="{Binding LevelText}" Width="100">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="Foreground" Value="{Binding LevelColor}"/>
@@ -105,7 +131,7 @@
                 </DataGridTextColumn>
 
                 <!-- 来源列 -->
-                <DataGridTextColumn Header="来源/模块" Binding="{Binding Source}" Width="160">
+                <DataGridTextColumn Header="来源/模块" Binding="{Binding Logger}" Width="160">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>

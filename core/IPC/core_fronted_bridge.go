@@ -208,3 +208,5 @@ func (ipc *CoreIpcInterface) UnloadPlugin(plugType constant.PlugType, id string)
 	// 卸载
 	return ipc.pm.UnloadPlugin(file)
 }
+
+func (ipc *CoreIpcInterface) GetGlobalConfigPage()

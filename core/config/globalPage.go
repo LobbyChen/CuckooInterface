@@ -1,0 +1,287 @@
+package config
+
+func BuildSettingsPanel() SettingPanel {
+	return SettingPanel{
+		Pages: []SettingPage{
+			// 1. 通用 (General)
+			{
+				Key:  "general",
+				Name: "通用",
+				Sections: []SettingSection{
+					{
+						Key:  "startup",
+						Name: "启动",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "autoStart",
+									Name:               "开机自启动",
+									Description:        "登录系统后自动启动 CuckooInterface",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor:             SwitchEditor{},
+								},
+								false, // default value
+								false,
+							),
+						},
+					},
+					{
+						Key:  "language",
+						Name: "语言",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "language",
+									Name:               "界面显示语言",
+									Description:        "选择应用程序的显示语言",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor: SelectEditor{
+										Options: []TextOption{
+											{Value: "zh-CN", Text: "简体中文"},
+											{Value: "en-US", Text: "English"},
+										},
+									},
+								},
+								"zh-CN",
+								"zh-CN",
+							),
+						},
+					},
+					{
+						Key:  "instance",
+						Name: "单实例",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "singleInstance",
+									Name:               "仅允许运行一个实例",
+									Description:        "新启动的实例将通知旧实例退出",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor:             SwitchEditor{},
+								},
+								true,
+								true,
+							),
+						},
+					},
+				},
+			},
+
+			// 2. 外观 (Appearance)
+			{
+				Key:  "appearance",
+				Name: "外观",
+				Sections: []SettingSection{
+					{
+						Key:  "theme",
+						Name: "主题",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "theme",
+									Name:               "应用主题",
+									Description:        "选择浅色或深色模式",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor: SelectEditor{
+										Options: []TextOption{
+											{Value: "light", Text: "浅色"},
+											{Value: "dark", Text: "深色"},
+											{Value: "system", Text: "跟随系统"},
+										},
+									},
+								},
+								"system",
+								"system",
+							),
+						},
+					},
+					{
+						Key:  "accentColor",
+						Name: "强调色",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "accentColor",
+									Name:               "强调色",
+									Description:        "选择界面的主要强调颜色",
+									DisplayName:        true,
+									DisplayDescription: false,
+									Editor: ColorEditor{
+										Colors:  []string{"#0078D4", "#E81123", "#107C10", "#FFB900", "#881798"},
+										Columns: 5,
+									},
+								},
+								"#0078D4",
+								"#0078D4",
+							),
+						},
+					},
+					{
+						Key:  "fontScale",
+						Name: "字号缩放",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "fontScale",
+									Name:               "字号缩放",
+									Description:        "调整界面字体大小比例",
+									DisplayName:        true,
+									DisplayDescription: false,
+									Editor: SliderEditor{
+										Min:  50,
+										Max:  200,
+										Step: 5,
+										Unit: "%",
+									},
+								},
+								100.0,
+								100.0,
+							),
+						},
+					},
+				},
+			},
+
+			// 3. 日志 (Logging)
+			{
+				Key:  "logging",
+				Name: "日志",
+				Sections: []SettingSection{
+					{
+						Key:  "level",
+						Name: "日志级别",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "logLevel",
+									Name:               "日志级别",
+									Description:        "控制日志输出的详细程度",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor: SelectEditor{
+										Options: []TextOption{
+											{Value: "debug", Text: "Debug"},
+											{Value: "info", Text: "Info"},
+											{Value: "warn", Text: "Warn"},
+											{Value: "error", Text: "Error"},
+										},
+									},
+								},
+								"info",
+								"info",
+							),
+						},
+					},
+					{
+						Key:  "maxSize",
+						Name: "文件大小限制",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "logMaxSize",
+									Name:               "单文件最大大小",
+									Description:        "当日志文件超过此大小时进行轮转",
+									DisplayName:        true,
+									DisplayDescription: false,
+									Editor: SliderEditor{
+										Min:  10,
+										Max:  1024,
+										Step: 10,
+										Unit: "MB",
+									},
+								},
+								100.0,
+								100.0,
+							),
+						},
+					},
+					{
+						Key:  "compression",
+						Name: "压缩策略",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "logCompress",
+									Name:               "压缩旧日志",
+									Description:        "对超过保留天数的日志文件进行压缩以节省空间",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor:             SwitchEditor{},
+								},
+								true,
+								true,
+							),
+						},
+					},
+				},
+			},
+
+			// 4. 插件 (Plugins)
+			{
+				Key:  "plugins",
+				Name: "插件",
+				Sections: []SettingSection{
+					{
+						Key:  "loading",
+						Name: "加载行为",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "autoLoadPlugins",
+									Name:               "启动时自动加载插件",
+									Description:        "程序启动后自动扫描并加载所有已安装插件",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor:             SwitchEditor{},
+								},
+								true,
+								true,
+							),
+							NewSetting(
+								SettingDefinition{
+									Key:                "continueOnError",
+									Name:               "加载失败时继续",
+									Description:        "某个插件加载失败时不中断整体启动流程",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor:             SwitchEditor{},
+								},
+								true,
+								true,
+							),
+						},
+					},
+					{
+						Key:  "directory",
+						Name: "插件目录",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "pluginDir",
+									Name:               "插件目录路径",
+									Description:        "存放插件文件的文件夹路径",
+									DisplayName:        true,
+									DisplayDescription: false,
+									Editor:             TextEditor{ReadOnly: true},
+									Actions: []SettingAction{
+										{
+											Key:  "browsePluginDir",
+											Type: ActionBrowseDirectory,
+											Text: "浏览",
+										},
+									},
+								},
+								"",
+								"",
+							),
+						},
+					},
+				},
+			},
+		},
+	}
+}

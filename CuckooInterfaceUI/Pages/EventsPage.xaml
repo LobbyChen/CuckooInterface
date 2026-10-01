@@ -8,7 +8,54 @@
       d:DesignHeight="600" d:DesignWidth="900"
       Title="EventsPage">
 
-    <Grid Margin="24">
+    <Page.Resources>
+        <!-- 页面入场动画 -->
+        <Storyboard x:Key="PageEntranceAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                             From="20" To="0" Duration="0:0:0.35">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <!-- 叠加层出现动画（缩放 + 淡入） -->
+        <Storyboard x:Key="OverlayShowAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.2" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                             From="0.92" To="1" Duration="0:0:0.22">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                             From="0.92" To="1" Duration="0:0:0.22">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <!-- 叠加层消失动画（缩放 + 淡出） -->
+        <Storyboard x:Key="OverlayHideAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0" Duration="0:0:0.15" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                             From="1" To="0.95" Duration="0:0:0.15" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                             From="1" To="0.95" Duration="0:0:0.15" />
+        </Storyboard>
+    </Page.Resources>
+
+    <Grid Margin="24" Opacity="0">
+        <Grid.RenderTransform>
+            <TranslateTransform Y="20" />
+        </Grid.RenderTransform>
+        <Grid.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
+            </EventTrigger>
+        </Grid.Triggers>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -110,12 +157,16 @@
 
         <!-- ===== 叠加层：发布事件 ===== -->
         <Grid x:Name="PublishOverlay" Grid.RowSpan="2" Visibility="Collapsed">
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <Border x:Name="PublishOverlayBorder"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     CornerRadius="8"
                     Padding="24"
                     Width="520"
                     VerticalAlignment="Center"
                     HorizontalAlignment="Center">
+                <Border.RenderTransform>
+                    <ScaleTransform ScaleX="0.92" ScaleY="0.92" />
+                </Border.RenderTransform>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -165,13 +216,17 @@
 
         <!-- ===== 叠加层：已注册事件 ===== -->
         <Grid x:Name="RegisteredOverlay" Grid.RowSpan="2" Visibility="Collapsed">
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <Border x:Name="RegisteredOverlayBorder"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     CornerRadius="8"
                     Padding="24"
                     Width="640"
                     MaxHeight="520"
                     VerticalAlignment="Center"
                     HorizontalAlignment="Center">
+                <Border.RenderTransform>
+                    <ScaleTransform ScaleX="0.92" ScaleY="0.92" />
+                </Border.RenderTransform>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
