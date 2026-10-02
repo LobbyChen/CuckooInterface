@@ -20,107 +20,147 @@
         </Storyboard>
     </Page.Resources>
 
-    <Grid Margin="24" Opacity="0">
-        <Grid.RenderTransform>
-            <TranslateTransform Y="20" />
-        </Grid.RenderTransform>
-        <Grid.Triggers>
-            <EventTrigger RoutedEvent="Loaded">
-                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
-            </EventTrigger>
-        </Grid.Triggers>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+	<Grid Margin="24" Opacity="0">
+		<Grid.RenderTransform>
+			<TranslateTransform Y="20" />
+		</Grid.RenderTransform>
+		<Grid.Triggers>
+			<EventTrigger RoutedEvent="Loaded">
+				<BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
+			</EventTrigger>
+		</Grid.Triggers>
 
-        <!-- 标题区 -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="配置" FontSize="28" FontWeight="SemiBold" Foreground="White" />
-            <TextBlock Text="全局与插件配置管理" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
-        </StackPanel>
+		<!--
+            页面高度明确拆成：标题 / 后端状态 / 主内容。
+            状态区域独占一行，绝不覆盖插件列表或右侧配置面板。
+        -->
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+		</Grid.RowDefinitions>
 
-        <!-- 双栏布局 -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+		<!-- 标题区 -->
+		<StackPanel Grid.Row="0" Margin="0,0,0,16">
+			<TextBlock Text="配置" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+			<TextBlock Text="全局与插件配置管理"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,4,0,0" />
+		</StackPanel>
 
-            <!-- 左侧：插件选择 -->
-            <ui:Card Grid.Column="0" Padding="12" VerticalAlignment="Stretch">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="插件列表" FontSize="14" FontWeight="SemiBold" Margin="4,0,0,12" />
-                    <ListBox x:Name="PluginListBox"
+		<!-- 主体双栏 -->
+		<Grid Grid.Row="1" MinHeight="360">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="300" />
+				<ColumnDefinition Width="16" />
+				<ColumnDefinition Width="*" MinWidth="360" />
+			</Grid.ColumnDefinitions>
+
+			<!-- 左侧：插件选择 -->
+			<ui:Card Grid.Column="0"
+                     Padding="12"
+                     VerticalAlignment="Stretch"
+                     HorizontalAlignment="Stretch"
+                     VerticalContentAlignment="Stretch"
+                     HorizontalContentAlignment="Stretch">
+				<Grid>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="*" />
+					</Grid.RowDefinitions>
+
+					<TextBlock Grid.Row="0"
+                               Text="插件列表"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Margin="4,0,4,12" />
+
+					<ui:ListView Grid.Row="1"
+                             x:Name="PluginListBox"
                              Background="Transparent"
                              BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
                              SelectionChanged="PluginListBox_SelectionChanged">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding" Value="10,8" />
-                                <Setter Property="Margin" Value="0,2" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBoxItem">
-                                            <Border x:Name="Bd"
-                                                    Background="Transparent"
-                                                    CornerRadius="6"
-                                                    Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter />
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
-                                                </Trigger>
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding TypeText}" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="0,2,0,0" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-            </ui:Card>
 
-            <!-- 右侧：配置页面（暂空） -->
-            <ui:Card Grid.Column="2" Padding="20" VerticalAlignment="Stretch">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+						<ui:ListView.ItemTemplate>
+							<DataTemplate>
+								<StackPanel MinWidth="0">
+									<TextBlock Text="{Binding Name}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+									<TextBlock Text="{Binding TypeText}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Margin="0,2,0,0" />
+								</StackPanel>
+							</DataTemplate>
+						</ui:ListView.ItemTemplate>
+					</ui:ListView>
+				</Grid>
+			</ui:Card>
 
-                    <!-- 配置区头部 -->
-                    <StackPanel Grid.Row="0" Margin="0,0,0,16">
-                        <TextBlock x:Name="SelectedPluginName" Text="请选择左侧插件" FontSize="18" FontWeight="SemiBold" Foreground="White" />
-                        <TextBlock x:Name="SelectedPluginDesc" Text="从左侧列表选择一个插件以查看其配置项" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
-                    </StackPanel>
+			<!-- 右侧：配置内容 -->
+			<ui:Card Grid.Column="2"
+                     Padding="20"
+                     VerticalAlignment="Stretch"
+                     HorizontalAlignment="Stretch"
+                     VerticalContentAlignment="Stretch"
+                     HorizontalContentAlignment="Stretch">
+				<Grid>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="*" />
+					</Grid.RowDefinitions>
 
-                    <!-- 空配置占位 -->
-                    <Border Grid.Row="1"
+					<!-- 配置区头部 -->
+					<StackPanel Grid.Row="0" Margin="0,0,0,16">
+						<TextBlock x:Name="SelectedPluginName"
+                                   Text="请选择左侧插件"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+						<TextBlock x:Name="SelectedPluginDesc"
+                                   Text="从左侧列表选择一个插件以查看其配置项"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,4,0,0"
+                                   TextWrapping="Wrap" />
+					</StackPanel>
+
+					<!--
+                        空状态现在是真正的全尺寸内容区，而不是只包住文字的一小块 Border。
+                        Card 的 ContentAlignment 显式设为 Stretch，Grid 的第二行占满剩余空间。
+                    -->
+					<Border Grid.Row="1"
+                            MinHeight="240"
                             Background="{DynamicResource ControlFillColorDefaultBrush}"
                             CornerRadius="8"
+                            HorizontalAlignment="Stretch"
                             VerticalAlignment="Stretch">
-                        <TextBlock Text="暂无配置项"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
-                    </Border>
-                </Grid>
-            </ui:Card>
-        </Grid>
-    </Grid>
+						<Grid Margin="24">
+							<StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        MaxWidth="460">
+								<TextBlock Text="暂无配置项"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+								<TextBlock Text="当前插件没有可编辑的配置项，或插件暂未提供配置页面。"
+                                           Margin="0,8,0,0"
+                                           FontSize="13"
+                                           TextWrapping="Wrap"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+							</StackPanel>
+						</Grid>
+					</Border>
+				</Grid>
+			</ui:Card>
+		</Grid>
+	</Grid>
 </Page>
+

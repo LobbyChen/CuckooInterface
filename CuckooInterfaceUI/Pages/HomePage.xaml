@@ -1,145 +1,288 @@
 <Page x:Class="CuckooInterfaceUI.Pages.HomePage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-      mc:Ignorable="d"
-      d:DesignHeight="600" d:DesignWidth="900"
       Title="HomePage">
+    <Grid Margin="28,24,28,20"
+          TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-    <Page.Resources>
-        <Storyboard x:Key="PageEntranceAnimation">
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3" />
-            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                             From="20" To="0" Duration="0:0:0.35">
-                <DoubleAnimation.EasingFunction>
-                    <CubicEase EasingMode="EaseOut" />
-                </DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-        </Storyboard>
-    </Page.Resources>
+        <!-- 页面标题 + 右上角操作按钮 -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-    <StackPanel Margin="24" Opacity="0">
-        <StackPanel.RenderTransform>
-            <TranslateTransform Y="20" />
-        </StackPanel.RenderTransform>
-        <StackPanel.Triggers>
-            <EventTrigger RoutedEvent="Loaded">
-                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
-            </EventTrigger>
-        </StackPanel.Triggers>
-        <!-- 标题区 -->
-        <TextBlock Text="概览" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="White"/>
-        <TextBlock Text="CuckooInterface 运行状态一览" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,24" />
-        
-        <!-- 状态卡片组 -->
-        <UniformGrid Columns="4" Margin="0,0,0,24">
-            <ui:Card Margin="0,0,12,0" Padding="16" VerticalAlignment="Stretch">
-                <StackPanel>
-                    <TextBlock Text="运行状态" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Ellipse Width="10" Height="10" Fill="#43B581" VerticalAlignment="Center" />
-                        <TextBlock Text="运行中" Margin="8,0,0,0" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="内核已就绪" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
-                </StackPanel>
-            </ui:Card>
-
-            <ui:Card Margin="6,0,6,0" Padding="16" VerticalAlignment="Stretch">
-                <StackPanel>
-                    <TextBlock Text="内核" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <TextBlock x:Name="KernelCount" Text="0" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
-                    <TextBlock x:Name="KernelNames" Text="-" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
-                </StackPanel>
-            </ui:Card>
-
-            <ui:Card Margin="6,0,6,0" Padding="16" VerticalAlignment="Stretch">
-                <StackPanel>
-                    <TextBlock Text="基础插件" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <TextBlock x:Name="BasePluginCount" Text="0" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
-                    <TextBlock x:Name="BasePluginStatus" Text="-" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
-                </StackPanel>
-            </ui:Card>
-
-            <ui:Card Margin="12,0,0,0" Padding="16" VerticalAlignment="Stretch">
-                <StackPanel>
-                    <TextBlock Text="应用插件" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    <TextBlock x:Name="ActivePluginCount" Text="0" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,0" />
-                    <TextBlock x:Name="ActivePluginStatus" Text="-" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,8,0,0" />
-                </StackPanel>
-            </ui:Card>
-        </UniformGrid>
-
-        <!-- 最近事件 -->
-        <ui:Card Padding="16" Margin="0,0,0,24">
-            <StackPanel>
-                <DockPanel Margin="0,0,0,12">
-                    <TextBlock Text="最近事件" FontSize="16" FontWeight="SemiBold" />
-                    <ui:Button Content="查看全部" Appearance="Secondary" FontSize="12" Padding="10,4" HorizontalAlignment="Right" DockPanel.Dock="Right" Click="ViewAllEvents_Click" />
-                </DockPanel>
-                <ItemsControl x:Name="RecentEventsList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="100" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Padding="0,6" />
-                                <TextBlock Grid.Column="1" Text="{Binding EventName}" Padding="0,6" />
-                                <Border Grid.Column="2" Background="{Binding LevelColor}" CornerRadius="4" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding LevelText}" Foreground="White" FontSize="11" />
-                                </Border>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="概览"
+                           FontSize="28"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Core 当前运行状态"
+                           Margin="0,4,0,0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
             </StackPanel>
+
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top">
+                <ui:Button x:Name="RefreshHomeButton"
+                           Content="刷新"
+                           Appearance="Secondary"
+                           Margin="0,0,10,0"
+                           Click="RefreshHome_Click" />
+
+                <ui:Button x:Name="RestartServiceButton"
+                           Content="重启 Core"
+                           Appearance="Primary"
+                           Margin="0,0,10,0"
+                           Click="RestartService_Click" />
+
+                <ui:Button x:Name="StopServiceButton"
+                           Content="停止 Core"
+                           Appearance="Danger"
+                           Click="StopService_Click" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Core 运行状态 -->
+        <ui:Card Grid.Row="1"
+                 Padding="18"
+                 Margin="0,0,0,18">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Ellipse x:Name="RunStatusDot"
+                         Width="10"
+                         Height="10"
+                         Fill="{DynamicResource CuckooStatusNeutralBrush}"
+                         VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1"
+                            Margin="12,0,20,0">
+                    <TextBlock x:Name="RunStatusText"
+                               Text="检查中…"
+                               FontSize="16"
+                               FontWeight="SemiBold" />
+                    <TextBlock x:Name="RunStatusDetailText"
+                               Text="正在连接 Core"
+                               FontSize="12"
+                               Margin="0,3,0,0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            HorizontalAlignment="Right">
+                    <TextBlock Text="运行时间"
+                               FontSize="11"
+                               HorizontalAlignment="Right"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="UptimeText"
+                               Text="—"
+                               FontSize="15"
+                               Margin="0,3,0,0"
+                               HorizontalAlignment="Right" />
+                </StackPanel>
+            </Grid>
         </ui:Card>
 
-        <!-- 系统信息 -->
-        <UniformGrid Columns="2">
-            <ui:Card Padding="16" Margin="0,0,12,0">
+        <!-- 主体区域：左右等宽 -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="22" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧：运行数据 -->
+            <ui:Card Grid.Column="0"
+                     Padding="20">
                 <StackPanel>
-                    <TextBlock Text="系统信息" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
-                    <Grid>
+                    <TextBlock Text="运行数据"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,16" />
+
+                    <Grid Margin="0,0,0,18">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="版本" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="VersionText" Text="-" Padding="0,6" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="运行时长" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="UptimeText" Text="-" Padding="0,6" />
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="启动模式" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ModeText" Text="-" Padding="0,6" />
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="IPC 管道" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Padding="0,6" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="IpcPipeText" Text="-" Padding="0,6" />
+
+                        <StackPanel>
+                            <TextBlock Text="插件"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="PluginCountText"
+                                       Text="—"
+                                       FontSize="24"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="内核"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="KernelCount"
+                                       Text="—"
+                                       FontSize="24"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="今日事件"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="EventCountText"
+                                       Text="—"
+                                       FontSize="24"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="今日错误"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="ErrorCountText"
+                                       Text="—"
+                                       FontSize="24"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Separator Margin="0,0,0,14" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="内核"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                        <TextBlock x:Name="KernelNames"
+                                   Grid.Column="1"
+                                   Text="—"
+                                   TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="20,0,0,0" />
                     </Grid>
                 </StackPanel>
             </ui:Card>
 
-            <ui:Card Padding="16" Margin="12,0,0,0">
-                <StackPanel>
-                    <TextBlock Text="快捷操作" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <ui:Button Content="重启服务" Appearance="Primary" Margin="0,0,8,0" Click="RestartService_Click" />
-                        <ui:Button Content="重载插件" Appearance="Secondary" Margin="0,0,8,0" Click="ReloadPlugins_Click" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <ui:Button Content="打开日志" Appearance="Secondary" Margin="0,0,8,0" Click="OpenLogs_Click" />
-                        <ui:Button Content="停止服务" Appearance="Danger" Click="StopService_Click" />
-                    </StackPanel>
-                </StackPanel>
+            <!-- 右侧：最近事件，与左侧等宽等高 -->
+            <ui:Card Grid.Column="2"
+                     Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+        
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="最近事件"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+
+                        <ui:Button Grid.Column="1"
+                                   Content="查看全部"
+                                   Appearance="Secondary"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Top"
+                                   Click="ViewAllEvents_Click" />
+                    </Grid>
+                    
+
+
+                    <Grid Grid.Row="1">
+                        <ui:ListView x:Name="RecentEventsList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ui:ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid MinHeight="42"
+                                          VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="72" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Time}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                   VerticalAlignment="Center" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding EventName}"
+                                                   FontSize="13"
+                                                   Margin="10,0,12,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding LevelText}"
+                                                   FontSize="12"
+                                                   Foreground="{Binding LevelColor}"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ui:ListView.ItemTemplate>
+                        </ui:ListView>
+
+                        <StackPanel x:Name="RecentEventsEmptyState"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                            <TextBlock x:Name="RecentEventsEmptyTitle"
+                                       Text="暂无事件"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+
+                            <TextBlock x:Name="RecentEventsEmptyDetail"
+                                       Text="恢复连接后会自动刷新。"
+                                       FontSize="12"
+                                       Margin="0,5,0,0"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
             </ui:Card>
-        </UniformGrid>
-    </StackPanel>
+        </Grid>
+    </Grid>
 </Page>

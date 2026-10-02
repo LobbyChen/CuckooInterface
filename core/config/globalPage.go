@@ -18,6 +18,9 @@ var (
 		"accentColor": {},
 		"fontScale":   {},
 	}
+
+	settingsMu    sync.RWMutex
+	settingValues = map[string]interface{}{}
 )
 
 // GetAppearanceSettings 返回外观设置的当前值（返回副本，避免外部修改内部状态）。
@@ -32,10 +35,7 @@ func GetAppearanceSettings() map[string]interface{} {
 }
 
 // SaveSettings 按 key 更新设置值。
-// 外观设置（theme/accentColor/fontScale）存入 appearanceValues，
-// 其余 key 在 SettingPanel 中查找并更新对应 Setting 的值。
 func SaveSettings(values map[string]interface{}) {
-	panel := BuildSettingsPanel()
 	for k, v := range values {
 		if _, ok := appearanceKeys[k]; ok {
 			appearanceMu.Lock()
@@ -43,7 +43,10 @@ func SaveSettings(values map[string]interface{}) {
 			appearanceMu.Unlock()
 			continue
 		}
-		setSettingValue(panel, k, v)
+
+		settingsMu.Lock()
+		settingValues[k] = v
+		settingsMu.Unlock()
 	}
 }
 
@@ -63,7 +66,7 @@ func setSettingValue(panel SettingPanel, key string, value interface{}) {
 }
 
 func BuildSettingsPanel() SettingPanel {
-	return SettingPanel{
+	panel := SettingPanel{
 		Pages: []SettingPage{
 			// 1. 通用 (General)
 			{
@@ -270,4 +273,11 @@ func BuildSettingsPanel() SettingPanel {
 			},
 		},
 	}
+
+	settingsMu.RLock()
+	for k, v := range settingValues {
+		setSettingValue(panel, k, v)
+	}
+	settingsMu.RUnlock()
+	return panel
 }

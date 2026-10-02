@@ -6,8 +6,6 @@ import (
 	"CuckooInterface/dameon"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 )
 
 // DaemonApp 封装守护进程逻辑
@@ -56,12 +54,6 @@ func (app *DaemonApp) Init() error {
 	}()
 	// 拉起一次UI
 	go dameon.StartUI()
-	// 设置系统托盘
-	go dameon.SetupTray()
-
-	// 监听信号
-	signal.Notify(app.sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	return nil
 }
 
@@ -88,13 +80,11 @@ func (app *DaemonApp) startCore() error {
 
 	app.logger.Info("Starting Core via Daemon...")
 
-	// 在 goroutine 中启动 Core
-	go func() {
-		if err := app.coreApp.Init(); err != nil {
-			app.logger.Errorf("Failed to initialize Core: %v", err)
-			return
-		}
-	}()
+	// 启动 Core
+	if err := app.coreApp.Init(); err != nil {
+		app.logger.Errorf("Failed to initialize Core: %v", err)
+		return fmt.Errorf("failed to initialize Core: %w", err)
+	}
 
 	return nil
 }

@@ -65,8 +65,7 @@ func IsFile(f string) bool {
 	return !fi.IsDir()
 }
 
-// IsFileExist 判断路径是否存在且为普通文件（非目录）。
-// 修正：os.IsExist 不适用于 os.Stat 的返回值，且避免重复调用 Stat。
+// IsFileExist 判断路径是否存在且为普通文件。
 func IsFileExist(f string) bool {
 	return IsFile(f)
 }

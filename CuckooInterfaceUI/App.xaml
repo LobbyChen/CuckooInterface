@@ -10,6 +10,14 @@
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- 统一应用状态与交互颜色。 -->
+            <SolidColorBrush x:Key="CuckooStatusSuccessBrush" Color="#63D38B" />
+            <SolidColorBrush x:Key="CuckooStatusWarningBrush" Color="#F2C35E" />
+            <SolidColorBrush x:Key="CuckooStatusErrorBrush" Color="#FF7272" />
+            <SolidColorBrush x:Key="CuckooStatusNeutralBrush" Color="#9AA0A6" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
+
+

@@ -33,11 +33,7 @@ type CoreApp struct {
 
 // NewCoreApp 创建核心应用实例
 func NewCoreApp() *CoreApp {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &CoreApp{
-		ctx:    ctx,
-		cancel: cancel,
-	}
+	return &CoreApp{}
 }
 
 // Init 初始化核心组件
@@ -48,6 +44,9 @@ func (app *CoreApp) Init() error {
 	if app.isRunning {
 		return fmt.Errorf("core is already running")
 	}
+
+	// 每次 Core 启动都创建新的上下文，保证 Daemon 的 restartCore 可真正重新启动。
+	app.ctx, app.cancel = context.WithCancel(context.Background())
 
 	// 获取目录
 	var err error
@@ -172,7 +171,7 @@ func (app *CoreApp) Run() {
 	app.Shutdown()
 }
 
-// Shutdown 优雅关闭核心业务
+// Shutdown 关闭核心业务
 func (app *CoreApp) Shutdown() {
 	app.mu.Lock()
 	defer app.mu.Unlock()

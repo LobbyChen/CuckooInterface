@@ -235,7 +235,7 @@ func (bus *EventBus) GetRegisteredEventsInfo() []RegisteredEventInfo {
 // GetAllBufferedEvent 获取所有已经缓冲的事件
 func (bus *EventBus) GetAllBufferedEvent() []*EmitTask {
 	if bus.eventQueue.Len() != 0 {
-		return bus.eventQueue.ClearAndFetch()
+		return bus.eventQueue.GetAll()
 	}
 	return nil
 }

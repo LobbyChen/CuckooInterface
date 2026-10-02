@@ -16,3 +16,5 @@ namespace CuckooInterfaceUI.Models
         public string Uptime { get; set; } = "0h 0m";
     }
 }
+
+

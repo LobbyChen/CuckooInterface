@@ -37,10 +37,10 @@ namespace CuckooInterfaceUI.Models
 
         public Brush LevelColor => Level switch
         {
-            EventLevel.Normal => new SolidColorBrush(Color.FromRgb(0x43, 0xB5, 0x81)),
-            EventLevel.Warning => new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23)),
-            EventLevel.Error => new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D)),
-            _ => Brushes.Gray
+            EventLevel.Normal => new SolidColorBrush(Color.FromRgb(0x63, 0xD3, 0x8B)),
+            EventLevel.Warning => new SolidColorBrush(Color.FromRgb(0xF2, 0xC3, 0x5E)),
+            EventLevel.Error => new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x72)),
+            _ => new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6))
         };
     }
 
@@ -63,3 +63,5 @@ namespace CuckooInterfaceUI.Models
         public string DefaultPayload { get; set; } = "{}";
     }
 }
+
+

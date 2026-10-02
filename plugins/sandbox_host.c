@@ -434,3 +434,5 @@ void sandbox_wait_for_crash(void *handle)
         return;
     WaitForSingleObject(ctx->crash_event, INFINITE);
 }
+
+

@@ -8,7 +8,7 @@ import (
 )
 
 // 长度
-const MaxPayloadLen = 1024
+const MaxPayloadLen = 1024 * 1024
 
 func GeneralPkg(data []byte) []byte {
 	// 格式

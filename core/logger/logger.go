@@ -127,10 +127,9 @@ func (c *CachedCore) Sync() error {
 // GetLogs 获取所有缓存的日志
 func (c *CachedCore) GetLogs() []SingleLogRecord {
 	c.state.mu.RLock()
+	defer c.state.mu.RUnlock()
 	logs := make([]SingleLogRecord, len(c.state.cache))
 	copy(logs, c.state.cache)
-	c.state.mu.RUnlock()
-	c.Clear()
 	return logs
 }
 

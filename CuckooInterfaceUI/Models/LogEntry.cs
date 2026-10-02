@@ -32,11 +32,13 @@ namespace CuckooInterfaceUI.Models
 
         public Brush LevelColor => Level switch
         {
-            LogLevel.Debug => new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x8A)),
-            LogLevel.Info => new SolidColorBrush(Color.FromRgb(0x43, 0xB5, 0x81)),
-            LogLevel.Warn => new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23)),
-            LogLevel.Error => new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D)),
-            _ => Brushes.Gray
+            LogLevel.Debug => new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6)),
+            LogLevel.Info => new SolidColorBrush(Color.FromRgb(0x63, 0xD3, 0x8B)),
+            LogLevel.Warn => new SolidColorBrush(Color.FromRgb(0xF2, 0xC3, 0x5E)),
+            LogLevel.Error => new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x72)),
+            _ => new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6))
         };
     }
 }
+
+

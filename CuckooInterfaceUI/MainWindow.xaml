@@ -1,43 +1,74 @@
 <ui:FluentWindow x:Class="CuckooInterfaceUI.MainWindow"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              xmlns:pages="clr-namespace:CuckooInterfaceUI.Pages"
              mc:Ignorable="d"
              Title="CuckooInterface"
-             Width="1100" Height="700"
+             Width="1180" Height="740"
+             MinWidth="960" MinHeight="600"
              WindowStartupLocation="CenterScreen"
              ExtendsContentIntoTitleBar="True"
              WindowBackdropType="Mica">
-
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 标题栏：提供拖拽区域与窗口控制按钮 -->
         <ui:TitleBar Grid.Row="0" Title="CuckooInterface" />
 
-        <!-- 导航 + 内容区 -->
         <ui:NavigationView x:Name="RootNavigation"
                            Grid.Row="1"
                            PaneDisplayMode="Left"
+                           IsBackButtonVisible="Collapsed"
                            ScrollViewer.VerticalScrollBarVisibility="Auto"
                            ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="概览" Icon="{ui:SymbolIcon Home24}" TargetPageType="pages:HomePage" />
                 <ui:NavigationViewItem Content="插件" Icon="{ui:SymbolIcon Diversity24}" TargetPageType="pages:PluginsPage" />
                 <ui:NavigationViewItem Content="事件" Icon="{ui:SymbolIcon Pulse24}" TargetPageType="pages:EventsPage" />
-                <ui:NavigationViewItem Content="配置" Icon="{ui:SymbolIcon Settings24}" TargetPageType="pages:ConfigPage" />
                 <ui:NavigationViewItem Content="日志" Icon="{ui:SymbolIcon DocumentText24}" TargetPageType="pages:LogsPage" />
             </ui:NavigationView.MenuItems>
-
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="设置" Icon="{ui:SymbolIcon Settings24}" TargetPageType="pages:SettingsPage" />
             </ui:NavigationView.FooterMenuItems>
         </ui:NavigationView>
+
+        <ContentPresenter x:Name="RootContentDialogHost"
+                          Grid.Row="1"
+                          Panel.ZIndex="100" />
+
+        <Grid Grid.Row="2" Margin="16,8,16,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ui:InfoBar x:Name="GlobalConnectionInfoBar"
+                        Grid.Column="0"
+                        Title="后端未连接"
+                        Message="正在检查 Core 和 Daemon。"
+                        IsOpen="False"
+                        IsClosable="False"
+                        Severity="Error"
+                        VerticalAlignment="Center" />
+            <ui:Button x:Name="ReconnectButton"
+                       Grid.Column="1"
+                       Content="重连"
+                       Appearance="Secondary"
+                       Margin="12,0,0,0"
+                       Click="ReconnectButton_Click"
+                       Visibility="Collapsed" />
+        </Grid>
+
+        <ui:SnackbarPresenter x:Name="SnackbarPresenter"
+                              Grid.RowSpan="3"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Bottom"
+                              Margin="0,0,20,56"
+                              Panel.ZIndex="200" />
     </Grid>
 </ui:FluentWindow>

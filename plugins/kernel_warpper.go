@@ -106,12 +106,18 @@ type Kernel struct {
 }
 
 var globalHostAPI *HostAPI
-var hostApiOnce sync.Once
+var globalHostAPIMu sync.RWMutex
 
 func InjectHostAPI(api *HostAPI) {
-	hostApiOnce.Do(func() {
-		globalHostAPI = api
-	})
+	globalHostAPIMu.Lock()
+	globalHostAPI = api
+	globalHostAPIMu.Unlock()
+}
+
+func currentHostAPI() *HostAPI {
+	globalHostAPIMu.RLock()
+	defer globalHostAPIMu.RUnlock()
+	return globalHostAPI
 }
 
 // C 字符串环形缓冲区
@@ -142,29 +148,33 @@ func allocReturnedCString(val string) *C.char {
 
 //export go_emit_event_gateway
 func go_emit_event_gateway(eventName *C.char, jsonPayload *C.char) {
-	if globalHostAPI != nil && globalHostAPI.EmitEvent != nil {
-		globalHostAPI.EmitEvent(C.GoString(eventName), C.GoString(jsonPayload))
+	api := currentHostAPI()
+	if api != nil && api.EmitEvent != nil {
+		api.EmitEvent(C.GoString(eventName), C.GoString(jsonPayload))
 	}
 }
 
 //export go_log_info_gateway
 func go_log_info_gateway(msg *C.char) {
-	if globalHostAPI != nil && globalHostAPI.LogInfo != nil {
-		globalHostAPI.LogInfo(C.GoString(msg))
+	api := currentHostAPI()
+	if api != nil && api.LogInfo != nil {
+		api.LogInfo(C.GoString(msg))
 	}
 }
 
 //export go_log_error_gateway
 func go_log_error_gateway(msg *C.char) {
-	if globalHostAPI != nil && globalHostAPI.LogError != nil {
-		globalHostAPI.LogError(C.GoString(msg))
+	api := currentHostAPI()
+	if api != nil && api.LogError != nil {
+		api.LogError(C.GoString(msg))
 	}
 }
 
 //export go_get_plugin_config_gateway
 func go_get_plugin_config_gateway(plugname *C.char) *C.char {
-	if globalHostAPI != nil && globalHostAPI.GetPluginConfig != nil {
-		val := globalHostAPI.GetPluginConfig(C.GoString(plugname))
+	api := currentHostAPI()
+	if api != nil && api.GetPluginConfig != nil {
+		val := api.GetPluginConfig(C.GoString(plugname))
 		return allocReturnedCString(val)
 	}
 	return nil
@@ -173,16 +183,17 @@ func go_get_plugin_config_gateway(plugname *C.char) *C.char {
 //export go_into_loop_report_gateway
 func go_into_loop_report_gateway(kernelID *C.char) {
 	id := C.GoString(kernelID)
-	// 调用上层业务逻辑
-	if globalHostAPI != nil && globalHostAPI.IntoLoopReport != nil {
-		globalHostAPI.IntoLoopReport(id)
+	api := currentHostAPI()
+	if api != nil && api.IntoLoopReport != nil {
+		api.IntoLoopReport(id)
 	}
 }
 
 //export go_panic_gateway
 func go_panic_gateway(reason *C.char) {
-	if globalHostAPI != nil && globalHostAPI.Panic != nil {
-		globalHostAPI.Panic(C.GoString(reason))
+	api := currentHostAPI()
+	if api != nil && api.Panic != nil {
+		api.Panic(C.GoString(reason))
 	}
 }
 
@@ -295,8 +306,9 @@ func (k *Kernel) StartLoop() error {
 		return nil // 成功进入循环
 	case <-crashCh:
 		reason := k.getCrashReason()
-		if globalHostAPI != nil && globalHostAPI.Panic != nil {
-			globalHostAPI.Panic(reason)
+		api := currentHostAPI()
+		if api != nil && api.Panic != nil {
+			api.Panic(reason)
 		}
 		return fmt.Errorf("cuckoo: kernel crashed before entering loop: %s", reason)
 	case <-time.After(10 * time.Second):
@@ -337,8 +349,9 @@ func (k *Kernel) handleCrashIfNeeded() {
 	if reason == "" {
 		reason = "kernel crashed (unknown reason)"
 	}
-	if globalHostAPI != nil && globalHostAPI.Panic != nil {
-		globalHostAPI.Panic(reason)
+	api := currentHostAPI()
+	if api != nil && api.Panic != nil {
+		api.Panic(reason)
 	}
 }
 func (k *Kernel) Destroy() {

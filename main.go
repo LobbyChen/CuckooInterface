@@ -3,6 +3,7 @@ package main
 import (
 	"CuckooInterface/core/constant"
 	"CuckooInterface/core/utils"
+	"CuckooInterface/dameon"
 	"flag"
 	"fmt"
 	"os"
@@ -15,12 +16,10 @@ const (
 	corePort   int = 25568
 )
 
-var launchType = flag.String(constant.ArgTag, "", "启动类型: normal, dameon")
-
 func main() {
 	flag.Parse()
 
-	mode := *launchType
+	mode := *dameon.GetStartType()
 	if mode == "" {
 		mode = constant.DameonModeArgData
 	}

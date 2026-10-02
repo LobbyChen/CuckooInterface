@@ -1,113 +1,204 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using CuckooInterfaceUI.Models;
 using CuckooInterfaceUI.Services;
 
 namespace CuckooInterfaceUI.Pages
 {
-    /// <summary>
-    /// LogsPage.xaml 的交互逻辑
-    /// </summary>
     public partial class LogsPage : Page
     {
-        private readonly MockBackend _backend = MockBackend.Instance;
+        private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<LogEntry> _allLogs = new();
 
         public LogsPage()
         {
             InitializeComponent();
-            LoadLogsFromBackend();
+            Loaded += LogsPage_Loaded;
+            Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
 
-        private void LoadLogsFromBackend()
+        private async void LogsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            _allLogs = _backend.GetLogs().ToList();
-            ApplyFilter();
+            _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
+            _backend.ConnectionStateChanged += Backend_ConnectionStateChanged;
+            await LoadLogsFromBackendAsync();
         }
 
-        // ===== 筛选与搜索 =====
+        private void Backend_ConnectionStateChanged(object? sender, BackendConnectionStateChangedEventArgs e)
+        {
+            if (!e.IsCore || !IsVisible) return;
+            _ = Dispatcher.InvokeAsync(async () =>
+            {
+                if (e.IsConnected) await LoadLogsFromBackendAsync();
+                else SetDisconnectedState();
+            });
+        }
+
+        private async Task LoadLogsFromBackendAsync()
+        {
+            if (!_backend.IsCoreConnected)
+            {
+                SetDisconnectedState();
+                return;
+            }
+
+            try
+            {
+                RefreshLogsButton.IsEnabled = false;
+                _allLogs = await _backend.GetLogsAsync();
+                ApplyFilter();
+            }
+            catch (Exception ex)
+            {
+                if (ex is BackendConnectionException) SetDisconnectedState();
+                await ShowBackendErrorAsync("加载日志失败", ex);
+            }
+            finally
+            {
+                var connected = _backend.IsCoreConnected;
+                RefreshLogsButton.IsEnabled = connected;
+                ExportLogsButton.IsEnabled = connected && LogsList.Items.Count > 0;
+                ClearLogsButton.IsEnabled = connected && _allLogs.Count > 0;
+            }
+        }
 
         private void ApplyFilter()
         {
-            // InitializeComponent 期间控件可能尚未全部创建（ComboBox 的 SelectedIndex
-            // 会在 XAML 解析阶段触发 SelectionChanged），此时直接访问会 NRE。
-            if (LogsDataGrid == null || SearchBox == null || LevelFilter == null)
-                return;
+            if (LogsList == null || SearchBox == null || LevelFilter == null) return;
 
             string? levelFilter = null;
             if (LevelFilter.SelectedItem is ComboBoxItem item && item.Content is string level && level != "所有级别")
-            {
                 levelFilter = level;
-            }
 
-            string search = (SearchBox.Text ?? string.Empty).Trim().ToLower();
-
+            var search = (SearchBox.Text ?? string.Empty).Trim();
             var filtered = _allLogs.Where(log =>
             {
                 if (levelFilter != null && log.LevelText != levelFilter) return false;
-                if (!string.IsNullOrEmpty(search))
+                if (!string.IsNullOrWhiteSpace(search))
                 {
-                    return log.Message.ToLower().Contains(search) ||
-                           log.Logger.ToLower().Contains(search);
+                    return log.Message.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                           log.Logger.Contains(search, StringComparison.OrdinalIgnoreCase);
                 }
                 return true;
             }).ToList();
 
-            LogsDataGrid.ItemsSource = filtered;
+            LogsList.ItemsSource = filtered;
+            LogCountText.Text = $"{filtered.Count} 条";
+            UpdateEmptyState();
+            ExportLogsButton.IsEnabled = _backend.IsCoreConnected && filtered.Count > 0;
+            ClearLogsButton.IsEnabled = _backend.IsCoreConnected && _allLogs.Count > 0;
         }
 
-        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        private void UpdateEmptyState()
         {
-            ApplyFilter();
+            var hasItems = LogsList.Items.Count > 0;
+            LogsEmptyState.Visibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
+            if (hasItems) return;
+
+            var hasFilter = !string.IsNullOrWhiteSpace(SearchBox.Text) || LevelFilter.SelectedIndex > 0;
+            LogsEmptyTitle.Text = hasFilter ? "没有匹配日志" : "暂无日志";
+            LogsEmptyDetail.Text = hasFilter
+                ? "清空搜索条件或切换日志级别。"
+                : "Core 当前没有返回可显示的日志。";
         }
 
-        private void LevelFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void SetDisconnectedState()
         {
-            ApplyFilter();
+            _allLogs.Clear();
+            LogsList.ItemsSource = null;
+            LogCountText.Text = "—";
+            LogsEmptyState.Visibility = Visibility.Visible;
+            LogsEmptyTitle.Text = "Core 未连接";
+            LogsEmptyDetail.Text = "恢复连接后会自动刷新。";
+            RefreshLogsButton.IsEnabled = false;
+            ExportLogsButton.IsEnabled = false;
+            ClearLogsButton.IsEnabled = false;
         }
 
-        // ===== 操作 =====
+        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
+
+        private void LevelFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) => ApplyFilter();
+
+        private async void RefreshLogs_Click(object sender, RoutedEventArgs e) => await LoadLogsFromBackendAsync();
 
         private async void ClearLogs_Click(object sender, RoutedEventArgs e)
         {
-            var result = await new Wpf.Ui.Controls.MessageBox
+            if (!_backend.IsCoreConnected)
             {
-                Title = "确认",
-                Content = "确定要清空所有日志吗？",
-                PrimaryButtonText = "是",
-                SecondaryButtonText = "否"
-            }.ShowDialogAsync();
+                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                return;
+            }
 
-            if (result == Wpf.Ui.Controls.MessageBoxResult.Primary)
+            if (Window.GetWindow(this) is not MainWindow window) return;
+            var confirmed = await window.ShowConfirmDialogAsync("清空日志", "确定清空 Core 当前日志缓存吗？", "清空", danger: true);
+            if (!confirmed) return;
+
+            try
             {
-                _backend.GetLogs().Clear();
-                LoadLogsFromBackend();
+                ClearLogsButton.IsEnabled = false;
+                var ok = await _backend.ClearLogsAsync();
+                if (!ok) throw new InvalidOperationException("Core 未确认日志清空。");
+                await LoadLogsFromBackendAsync();
+                (Window.GetWindow(this) as MainWindow)?.ShowToast("日志已清空", "Core 日志缓存已经清空。");
+            }
+            catch (Exception ex)
+            {
+                await ShowBackendErrorAsync("清空日志失败", ex);
             }
         }
 
-        private async void ExportLogs_Click(object sender, RoutedEventArgs e)
+        private void ExportLogs_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new Microsoft.Win32.SaveFileDialog
+            var items = LogsList.Items.Cast<object>().OfType<LogEntry>().ToList();
+            if (items.Count == 0) return;
+
+            var dialog = new SaveFileDialog
             {
                 Filter = "CSV 文件 (*.csv)|*.csv|文本文件 (*.txt)|*.txt",
-                FileName = $"cuckoo_logs_{System.DateTime.Now:yyyyMMdd_HHmmss}"
+                FileName = $"cuckoo_logs_{DateTime.Now:yyyyMMdd_HHmmss}"
             };
+            if (dialog.ShowDialog() != true) return;
 
-            if (dialog.ShowDialog() == true)
+            try
             {
-                var lines = _allLogs.Select(log =>
-                    $"{log.Time},{log.LevelText},{log.Logger},{log.Message}");
+                ExportLogsButton.IsEnabled = false;
+                var lines = items.Select(log =>
+                    $"{EscapeCsv(log.Time)},{EscapeCsv(log.LevelText)},{EscapeCsv(log.Logger)},{EscapeCsv(log.Message)}");
                 File.WriteAllLines(dialog.FileName, lines);
-                await new Wpf.Ui.Controls.MessageBox
-                {
-                    Title = "导出成功",
-                    Content = $"日志已导出到：\n{dialog.FileName}",
-                    PrimaryButtonText = "确定"
-                }.ShowDialogAsync();
+                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出成功", $"已导出 {items.Count} 条日志。");
             }
+            catch (Exception ex)
+            {
+                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出失败", ex.Message, true);
+            }
+            finally
+            {
+                ExportLogsButton.IsEnabled = _backend.IsCoreConnected && items.Count > 0;
+            }
+        }
+
+        private static string EscapeCsv(string value)
+        {
+            if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0) return value;
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+
+        private System.Threading.Tasks.Task ShowBackendErrorAsync(string title, Exception ex)
+        {
+            if (ex is BackendConnectionException)
+            {
+                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
+
+            (Window.GetWindow(this) as MainWindow)?.ShowToast(title, ex.Message, true);
+            return System.Threading.Tasks.Task.CompletedTask;
         }
     }
 }

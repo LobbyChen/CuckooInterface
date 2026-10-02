@@ -1,111 +1,189 @@
 <Page x:Class="CuckooInterfaceUI.Pages.PluginsPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-      xmlns:local="clr-namespace:CuckooInterfaceUI.Pages"
-      mc:Ignorable="d"
-      d:DesignHeight="600" d:DesignWidth="900"
       Title="PluginsPage">
 
-    <Page.Resources>
-        <Storyboard x:Key="PageEntranceAnimation">
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3" />
-            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                             From="20" To="0" Duration="0:0:0.35">
-                <DoubleAnimation.EasingFunction>
-                    <CubicEase EasingMode="EaseOut" />
-                </DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-        </Storyboard>
-    </Page.Resources>
+    <Grid Margin="24" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-    <StackPanel Margin="24" Opacity="0">
-        <StackPanel.RenderTransform>
-            <TranslateTransform Y="20" />
-        </StackPanel.RenderTransform>
-        <StackPanel.Triggers>
-            <EventTrigger RoutedEvent="Loaded">
-                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
-            </EventTrigger>
-        </StackPanel.Triggers>
-        <!-- 标题区 -->
-        <DockPanel Margin="0,0,0,16">
+        <DockPanel Grid.Row="0" Margin="0,0,0,16">
             <StackPanel>
-                <TextBlock Text="插件管理" FontSize="28" FontWeight="SemiBold" Foreground="White"/>
-                <TextBlock Text="管理内核、基础与应用插件" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
+                <TextBlock Text="插件管理"
+                           FontSize="28"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="管理内核、基础与应用插件"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,4,0,0" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
-                <ui:Button Content="刷新" Icon="{ui:SymbolIcon ArrowSync24}" Appearance="Secondary" Margin="0,0,8,0" Click="RefreshButton_Click" />
-                <ui:Button Content="安装插件" Icon="{ui:SymbolIcon Add24}" Appearance="Primary" Click="InstallPlugin_Click" />
+
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        DockPanel.Dock="Right">
+                <ui:Button x:Name="RefreshPluginsButton"
+                           Content="刷新"
+                           Icon="{ui:SymbolIcon ArrowSync24}"
+                           Appearance="Secondary"
+                           Margin="0,0,8,0"
+                           Click="RefreshButton_Click" />
+                <ui:Button x:Name="InstallPluginButton"
+                           Content="安装插件"
+                           Icon="{ui:SymbolIcon Add24}"
+                           Appearance="Primary"
+                           Click="OpenInstallPanel_Click" />
             </StackPanel>
         </DockPanel>
 
-        <!-- 筛选栏 -->
-        <ui:Card Padding="12" Margin="0,0,0,16">
+        <ui:Card Grid.Row="1"
+                 Padding="12"
+                 Margin="0,0,0,16">
             <DockPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                    <ComboBox x:Name="TypeFilter" Width="140" Margin="8,0,0,0" SelectionChanged="TypeFilter_SelectionChanged">
-                        <ComboBoxItem Content="全部类型" />
-                        <ComboBoxItem Content="内核" />
-                        <ComboBoxItem Content="基础" />
-                        <ComboBoxItem Content="应用" />
+                <StackPanel Orientation="Horizontal"
+                            DockPanel.Dock="Right">
+                    <ComboBox x:Name="TypeFilter"
+                              Width="140"
+                              Margin="8,0,0,0"
+                              SelectedIndex="0"
+                              SelectionChanged="TypeFilter_SelectionChanged"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                              Background="{DynamicResource ControlFillColorDefaultBrush}">
+                        <ComboBoxItem Content="全部类型" Tag="" />
+                        <ComboBoxItem Content="内核" Tag="kernel" />
+                        <ComboBoxItem Content="基础" Tag="base" />
+                        <ComboBoxItem Content="应用" Tag="active" />
                     </ComboBox>
                 </StackPanel>
-                <ui:TextBox x:Name="SearchBox" PlaceholderText="搜索插件名称…" Icon="{ui:SymbolIcon Search24}" TextChanged="SearchBox_TextChanged" />
+
+                <ui:TextBox x:Name="SearchBox"
+                            PlaceholderText="搜索插件名称或 ID…"
+                            Icon="{ui:SymbolIcon Search24}"
+                            TextChanged="SearchBox_TextChanged"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
             </DockPanel>
         </ui:Card>
 
-        <!-- 插件列表 -->
-        <ItemsControl x:Name="PluginsList">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <WrapPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
+        <ScrollViewer Grid.Row="2"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <Grid>
+                <ItemsControl x:Name="PluginsList">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
 
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <ui:Card Width="280" Margin="0,0,16,16" Padding="16">
-                        <StackPanel>
-                            <!-- 头部：图标 + 名称 + 类型标签 -->
-                            <DockPanel Margin="0,0,0,8">
-                                <Border Width="36" Height="36" CornerRadius="8" Background="{DynamicResource ControlFillColorDefaultBrush}" DockPanel.Dock="Left">
-                                    <ui:SymbolIcon Symbol="Cube24" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel Margin="10,0,0,0">
-                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Version}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="11" />
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ui:Card Width="280"
+                                     Margin="0,0,16,16"
+                                     Padding="16">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <Border Width="36"
+                                                Height="36"
+                                                CornerRadius="8"
+                                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                DockPanel.Dock="Left">
+                                            <ui:SymbolIcon Symbol="Cube24"
+                                                           FontSize="20"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                        </Border>
+
+                                        <StackPanel Margin="10,0,0,0">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="15"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Version}"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                       FontSize="11" />
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <Border Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                            CornerRadius="4"
+                                            Padding="6,2"
+                                            HorizontalAlignment="Left"
+                                            Margin="0,0,0,8">
+                                        <TextBlock Text="{Binding TypeText}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </Border>
+
+                                    <TextBlock Text="{Binding Description}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"
+                                               MaxHeight="48"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,0,0,10" />
+
+                                    <StackPanel Orientation="Horizontal"
+                                                Margin="0,0,0,10">
+                                        <Ellipse Width="8"
+                                                 Height="8"
+                                                 Fill="{Binding StatusColor}"
+                                                 VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatusText}"
+                                                   Margin="6,0,0,0"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <DockPanel>
+                                        <StackPanel Orientation="Horizontal"
+                                                    DockPanel.Dock="Right">
+                                            <ui:Button Icon="{ui:SymbolIcon Settings24}"
+                                                       Appearance="Secondary"
+                                                       Padding="6"
+                                                       Margin="0,0,4,0"
+                                                       Tag="{Binding}"
+                                                       Click="PluginSettings_Click" />
+                                            <ui:Button Icon="{ui:SymbolIcon Delete24}"
+                                                       Appearance="Danger"
+                                                       Padding="6"
+                                                       Tag="{Binding}"
+                                                       Click="DeletePlugin_Click" />
+                                        </StackPanel>
+
+                                        <ui:ToggleSwitch IsChecked="{Binding IsEnabled}"
+                                                         OffContent="已禁用"
+                                                         OnContent="已启用"
+                                                         VerticalAlignment="Center"
+                                                         Checked="PluginToggle_Changed"
+                                                         Unchecked="PluginToggle_Changed"
+                                                         Tag="{Binding}" />
+                                    </DockPanel>
                                 </StackPanel>
-                            </DockPanel>
+                            </ui:Card>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-                            <!-- 类型标签 -->
-                            <Border Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" Margin="0,0,0,8">
-                                <TextBlock Text="{Binding TypeText}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            </Border>
-
-                            <!-- 描述 -->
-                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxHeight="48" TextTrimming="CharacterEllipsis" Margin="0,0,0,10" />
-
-                            <!-- 状态 -->
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <Ellipse Width="8" Height="8" Fill="{Binding StatusColor}" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding StatusText}" Margin="6,0,0,0" FontSize="12" VerticalAlignment="Center" />
-                            </StackPanel>
-
-                            <!-- 操作区 -->
-                            <DockPanel>
-                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                                    <ui:Button Icon="{ui:SymbolIcon Settings24}" Appearance="Secondary" Padding="6" Margin="0,0,4,0" Tag="{Binding}" Click="PluginSettings_Click" />
-                                    <ui:Button Icon="{ui:SymbolIcon Delete24}" Appearance="Danger" Padding="6" Tag="{Binding}" Click="DeletePlugin_Click" />
-                                </StackPanel>
-                                <ui:ToggleSwitch IsChecked="{Binding IsEnabled, Mode=TwoWay}" OffContent="已禁用" OnContent="已启用" VerticalAlignment="Center" Checked="PluginToggle_Changed" Unchecked="PluginToggle_Changed" Tag="{Binding}" />
-                            </DockPanel>
-                        </StackPanel>
-                    </ui:Card>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-    </StackPanel>
+                <StackPanel x:Name="PluginsEmptyState"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="0,24,0,24">
+                    <TextBlock x:Name="PluginsEmptyTitle"
+                               Text="暂无插件"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock x:Name="PluginsEmptyDetail"
+                               Text="可以从右上角安装插件。"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,5,0,0"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </Page>

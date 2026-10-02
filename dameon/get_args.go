@@ -10,6 +10,9 @@ import (
 // 获取启动类型
 var s = flag.String(constant.ArgTag, "", "启动类型")
 
+func GetStartType() *string {
+	return s
+}
 func init() {
 	flag.Parse()
 	logger.Init(logger.LoggerConfig{

@@ -29,6 +29,7 @@ namespace CuckooInterfaceUI.Models
         public string Name { get; set; } = string.Empty;
         public string Version { get; set; } = "1.0.0";
         public string Description { get; set; } = string.Empty;
+        public string RuntimeType { get; set; } = string.Empty;
         public PluginType Type { get; set; } = PluginType.Base;
         public string Author { get; set; } = string.Empty;
         public List<string> ProvidedEvents { get; set; } = new();
@@ -68,9 +69,9 @@ namespace CuckooInterfaceUI.Models
         {
             get
             {
-                if (!IsEnabled) return new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x8A));
-                if (IsLoaded) return new SolidColorBrush(Color.FromRgb(0x43, 0xB5, 0x81));
-                return new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D));
+                if (!IsEnabled) return new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6));
+                if (IsLoaded) return new SolidColorBrush(Color.FromRgb(0x63, 0xD3, 0x8B));
+                return new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x72));
             }
         }
 
@@ -82,3 +83,5 @@ namespace CuckooInterfaceUI.Models
         }
     }
 }
+
+

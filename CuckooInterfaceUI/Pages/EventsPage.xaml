@@ -1,17 +1,13 @@
 <Page x:Class="CuckooInterfaceUI.Pages.EventsPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-      xmlns:d="http://schemas.microsoft.com/expression/blend/2006"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-      mc:Ignorable="d"
-      d:DesignHeight="600" d:DesignWidth="900"
       Title="EventsPage">
 
     <Page.Resources>
-        <!-- 页面入场动画 -->
         <Storyboard x:Key="PageEntranceAnimation">
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3" />
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                             From="0" To="1" Duration="0:0:0.3" />
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
                              From="20" To="0" Duration="0:0:0.35">
                 <DoubleAnimation.EasingFunction>
@@ -19,280 +15,175 @@
                 </DoubleAnimation.EasingFunction>
             </DoubleAnimation>
         </Storyboard>
-
-        <!-- 叠加层出现动画（缩放 + 淡入） -->
-        <Storyboard x:Key="OverlayShowAnimation">
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.2" />
-            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                             From="0.92" To="1" Duration="0:0:0.22">
-                <DoubleAnimation.EasingFunction>
-                    <CubicEase EasingMode="EaseOut" />
-                </DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                             From="0.92" To="1" Duration="0:0:0.22">
-                <DoubleAnimation.EasingFunction>
-                    <CubicEase EasingMode="EaseOut" />
-                </DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-        </Storyboard>
-
-        <!-- 叠加层消失动画（缩放 + 淡出） -->
-        <Storyboard x:Key="OverlayHideAnimation">
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0" Duration="0:0:0.15" />
-            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                             From="1" To="0.95" Duration="0:0:0.15" />
-            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                             From="1" To="0.95" Duration="0:0:0.15" />
-        </Storyboard>
     </Page.Resources>
+    <Grid Margin="24" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
 
-    <Grid Margin="24" Opacity="0">
-        <Grid.RenderTransform>
-            <TranslateTransform Y="20" />
-        </Grid.RenderTransform>
-        <Grid.Triggers>
-            <EventTrigger RoutedEvent="Loaded">
-                <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
-            </EventTrigger>
-        </Grid.Triggers>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
 
-        <!-- 主内容容器（叠加层显示时整体隐藏） -->
-        <Grid x:Name="MainContent" Grid.RowSpan="2">
+        <Grid Margin="24" Opacity="0">
+            <Grid.RenderTransform>
+                <TranslateTransform Y="20" />
+            </Grid.RenderTransform>
+            <Grid.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard Storyboard="{StaticResource PageEntranceAnimation}" />
+                </EventTrigger>
+            </Grid.Triggers>
+
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- 标题区 -->
-            <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                <TextBlock Text="事件" FontSize="28" FontWeight="SemiBold" Foreground="White" />
-                <TextBlock Text="查看历史事件，发布新事件或浏览已注册事件" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
-            </StackPanel>
-
-            <!-- 主内容区 -->
-            <Grid Grid.Row="1">
+            <Grid x:Name="MainContent" Grid.RowSpan="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- 工具栏 -->
-                <ui:Card Grid.Row="0" Padding="12" Margin="0,0,0,16">
-                    <DockPanel>
-                        <TextBlock Text="历史事件" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="24,0,0,0">
-                            <ui:Button Content="查看已注册事件" Icon="{ui:SymbolIcon List24}" Appearance="Secondary" Margin="0,0,12,0" Click="OpenRegisteredOverlay_Click" />
-                            <ui:Button Content="发布事件" Icon="{ui:SymbolIcon Send24}" Appearance="Primary" Click="OpenPublishOverlay_Click" />
-                        </StackPanel>
-                    </DockPanel>
-                </ui:Card>
+                <DockPanel Grid.Row="0" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="事件"
+                                   FontSize="28"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Text="查看历史事件，发布新事件或浏览已注册事件"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
 
-                <!-- 历史事件列表 -->
-                <ListBox x:Name="RecentEventsList"
-                         Grid.Row="1"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,8" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Background" Value="Transparent" />
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="ListBoxItem">
-                                        <ContentPresenter />
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
-                                    CornerRadius="6"
-                                    Padding="12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Text="{Binding Time}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" />
-                                        <Border Background="{Binding LevelColor}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" Margin="0,4,0,0">
-                                            <TextBlock Text="{Binding LevelText}" Foreground="White" FontSize="10" />
-                                        </Border>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                                        <TextBlock Text="{Binding EventName}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                        <TextBlock Text="{Binding Payload}"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   FontSize="11"
-                                                   FontFamily="Consolas, Courier New, monospace"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Margin="0,4,0,0" />
-                                    </StackPanel>
-                                    <ui:Button Grid.Column="2"
-                                               Content="重发"
-                                               Icon="{ui:SymbolIcon ArrowSync24}"
-                                               Appearance="Secondary"
-                                               VerticalAlignment="Center"
-                                               Click="RepublishEvent_Click"
-                                               Tag="{Binding}" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                DockPanel.Dock="Right">
+                        <ui:Button x:Name="RefreshEventsButton"
+                                   Content="刷新"
+                                   Icon="{ui:SymbolIcon ArrowSync24}"
+                                   Appearance="Secondary"
+                                   Margin="0,0,8,0"
+                                   Click="RefreshEvents_Click" />
+                        <ui:Button x:Name="OpenRegisteredButton"
+                                   Content="查看已注册事件"
+                                   Icon="{ui:SymbolIcon List24}"
+                                   Appearance="Secondary"
+                                   Margin="0,0,8,0"
+                                   Click="OpenRegisteredPanel_Click" />
+                        <ui:Button x:Name="OpenPublishButton"
+                                   Content="发布事件"
+                                   Icon="{ui:SymbolIcon Send24}"
+                                   Appearance="Primary"
+                                   Click="OpenPublishPanel_Click" />
+                    </StackPanel>
+                </DockPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <ui:Card Grid.Row="0"
+                             Padding="12"
+                             Margin="0,0,0,16">
+                        <TextBlock Text="历史事件"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </ui:Card>
+
+                    <ListBox x:Name="RecentEventsList"
+                             Grid.Row="1"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0,0,0,8" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter />
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        CornerRadius="6"
+                                        Padding="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding Time}"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                       FontSize="12" />
+                                            <Border Background="{Binding LevelColor}"
+                                                    CornerRadius="4"
+                                                    Padding="6,2"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,4,0,0">
+                                                <TextBlock Text="{Binding LevelText}"
+                                                           Foreground="White"
+                                                           FontSize="10" />
+                                            </Border>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1"
+                                                    Margin="12,0,0,0">
+                                            <TextBlock Text="{Binding EventName}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Text="{Binding Payload}"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       FontSize="11"
+                                                       FontFamily="Consolas, Courier New, monospace"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Margin="0,4,0,0" />
+                                        </StackPanel>
+
+                                        <ui:Button Grid.Column="2"
+                                                   Content="重发"
+                                                   Icon="{ui:SymbolIcon ArrowSync24}"
+                                                   Appearance="Secondary"
+                                                   VerticalAlignment="Center"
+                                                   Click="RepublishEvent_Click"
+                                                   Tag="{Binding}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <StackPanel x:Name="EventsEmptyState"
+                                Grid.Row="1"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="EventsEmptyTitle"
+                                   Text="暂无事件"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock x:Name="EventsEmptyDetail"
+                                   Text="当前没有可显示的事件。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,5,0,0"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
             </Grid>
-        </Grid>
-
-        <!-- ===== 叠加层：发布事件 ===== -->
-        <Grid x:Name="PublishOverlay" Grid.RowSpan="2" Visibility="Collapsed">
-            <Border x:Name="PublishOverlayBorder"
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    CornerRadius="8"
-                    Padding="24"
-                    Width="520"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center">
-                <Border.RenderTransform>
-                    <ScaleTransform ScaleX="0.92" ScaleY="0.92" />
-                </Border.RenderTransform>
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <!-- 叠加层头部 -->
-                    <DockPanel Grid.Row="0" Margin="0,0,0,16">
-                        <TextBlock Text="发布事件" FontSize="18" FontWeight="SemiBold" Foreground="White" />
-                        <ui:Button Icon="{ui:SymbolIcon Dismiss24}" Appearance="Secondary" Padding="6" HorizontalAlignment="Right" DockPanel.Dock="Right" Click="ClosePublishOverlay_Click" />
-                    </DockPanel>
-
-                    <!-- 表单 -->
-                    <StackPanel Grid.Row="1">
-                        <TextBlock Text="事件名称" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,0,0,6" />
-                        <ComboBox x:Name="EventNameComboBox"
-                                  Height="36"
-                                  Margin="0,0,0,16"
-                                  SelectionChanged="EventNameComboBox_SelectionChanged">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Name}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-
-                        <TextBlock Text="事件载荷 (JSON)" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,0,0,6" />
-                        <TextBox x:Name="PayloadTextBox"
-                                 Height="160"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Disabled"
-                                 FontFamily="Consolas, Courier New, monospace"
-                                 FontSize="12" />
-                    </StackPanel>
-
-                    <!-- 操作按钮 -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                        <ui:Button Content="取消" Appearance="Secondary" Margin="0,0,8,0" Click="ClosePublishOverlay_Click" />
-                        <ui:Button Content="发布" Icon="{ui:SymbolIcon Send24}" Appearance="Primary" Click="PublishEvent_Click" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-        </Grid>
-
-        <!-- ===== 叠加层：已注册事件 ===== -->
-        <Grid x:Name="RegisteredOverlay" Grid.RowSpan="2" Visibility="Collapsed">
-            <Border x:Name="RegisteredOverlayBorder"
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    CornerRadius="8"
-                    Padding="24"
-                    Width="640"
-                    MaxHeight="520"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center">
-                <Border.RenderTransform>
-                    <ScaleTransform ScaleX="0.92" ScaleY="0.92" />
-                </Border.RenderTransform>
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <!-- 叠加层头部 -->
-                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                        <TextBlock Text="已注册事件" FontSize="18" FontWeight="SemiBold" Foreground="White" />
-                        <ui:Button Icon="{ui:SymbolIcon Dismiss24}" Appearance="Secondary" Padding="6" HorizontalAlignment="Right" DockPanel.Dock="Right" Click="CloseRegisteredOverlay_Click" />
-                    </DockPanel>
-
-                    <TextBlock Grid.Row="1" x:Name="RegisteredCountText" Text="" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,0,0,12" />
-
-                    <DataGrid Grid.Row="2"
-                              x:Name="RegisteredEventsGrid"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              CanUserResizeRows="False"
-                              CanUserReorderColumns="False"
-                              GridLinesVisibility="Horizontal"
-                              HeadersVisibility="Column"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              RowHeight="36"
-                              FontSize="13">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="事件名称" Binding="{Binding EventName}" Width="*">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
-                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                        <Setter Property="VerticalAlignment" Value="Center" />
-                                        <Setter Property="Margin" Value="8,0,0,0" />
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-
-                            <DataGridTextColumn Header="提供者" Binding="{Binding Provider}" Width="160">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                        <Setter Property="VerticalAlignment" Value="Center" />
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-
-                            <DataGridTextColumn Header="监听器数" Binding="{Binding ListenerCount}" Width="90">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                        <Setter Property="VerticalAlignment" Value="Center" />
-                                        <Setter Property="HorizontalAlignment" Value="Center" />
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-
-                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                        <ui:Button Content="关闭" Appearance="Primary" Click="CloseRegisteredOverlay_Click" />
-                    </StackPanel>
-                </Grid>
-            </Border>
         </Grid>
     </Grid>
 </Page>
+

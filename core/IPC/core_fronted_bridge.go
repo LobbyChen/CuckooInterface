@@ -446,12 +446,19 @@ func (ipc *CoreIpcInterface) findPluginFile(id string) *plugin_manager.SinglePlu
 
 func (ipc *CoreIpcInterface) handleGetRecentEvents() (json.RawMessage, error) {
 	events := ipc.ebus.GetAllBufferedEvent()
+	const maxRecentEvents = 200
+	if len(events) > maxRecentEvents {
+		events = events[len(events)-maxRecentEvents:]
+	}
+
 	dtos := make([]EventRecordDto, 0, len(events))
-	for _, e := range events {
+	// EventBus 的 RingQueue 返回顺序为旧 → 新，UI 列表按新 → 旧展示。
+	for i := len(events) - 1; i >= 0; i-- {
+		e := events[i]
 		dtos = append(dtos, EventRecordDto{
 			Timestamp: e.GetTimeStamp(),
 			EventName: e.GetName(),
-			Payload:   e.GetPayLoad(), // 修复：之前错误地使用了 GetName()
+			Payload:   e.GetPayLoad(),
 			Level:     "normal",
 		})
 	}
