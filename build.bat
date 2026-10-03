@@ -81,6 +81,9 @@ echo.
 REM ------------------------------------------------------------
 REM  Step 2: Build Go main program
 REM ------------------------------------------------------------
+echo [2/7] Processing Icon&Metadata
+go install github.com/tc-hib/go-winres@latest
+go-winres make
 echo [2/7] Building Go main program (CuckooInterface.exe)...
 go build -ldflags="-H windowsgui -s -w" -o "%BIN%\CuckooInterface.exe" .
 if errorlevel 1 (
