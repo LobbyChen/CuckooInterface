@@ -262,44 +262,110 @@ META-INF.json
 
 ```text
 CuckooInterface/
-├── core/
-│   ├── config/              # 全局与插件配置
-│   ├── constant/            # 常量、插件类型、目录、IPC 名称
-│   ├── event/               # EventBus
-│   ├── ipc/                 # Core IPC 与协议
-│   ├── logger/              # 日志
-│   ├── plugin_manager/      # 插件文件、Kernel、Plugin 管理
-│   └── utils/               # 通用工具
+├── main.go                      # 程序入口，根据 launch_type 分发到 Core 或 Daemon
+├── main_loop.go                 # Core 主循环（Normal 模式）
+├── daemon_loop.go               # Daemon 主循环（托盘 / Core 保活）
+├── constant.go                  # 进程间通信端口常量
+├── build.bat                    # 一键构建脚本（Go Core + WPF UI + PythonKernel）
+├── go.mod / go.sum              # Go 模块依赖
+├── icon.ico / icon.png / icon.svg
+├── LICENSE.txt
+├── readme.md
 │
-├── plugins/
-│   ├── cuckoo_kernel.h      # Kernel ABI
-│   ├── cuckoo_plugin.h      # Plugin Descriptor ABI
-│   ├── kernel_warpper.go    # Go/C Kernel 桥接
-│   ├── sandbox_host.c       # Kernel sandbox
+├── core/                        # Go Core 运行时
+│   ├── config/                  # 全局与插件配置
+│   │   ├── config.go            # 配置加载与持久化
+│   │   ├── globalPage.go        # 全局配置页模型
+│   │   └── settings_models.go   # 设置面板数据模型
+│   ├── constant/                # 常量、插件类型、目录、IPC 名称
+│   │   └── constant.go
+│   ├── event/                   # EventBus 事件总线
+│   │   └── event_framework.go
+│   ├── ipc/                     # Core 与前端的 IPC 桥接
+│   │   ├── core_fronted_bridge.go
+│   │   ├── pkgs.go              # IPC 数据包定义
+│   │   └── protocol.go          # 协议帧格式
+│   ├── logger/                  # 日志系统
+│   │   └── logger.go
+│   ├── plugin_manager/          # 插件与 Kernel 管理
+│   │   ├── kernel_manager.go    # Kernel 加载 / 初始化 / 生命周期
+│   │   ├── plugin_file_manager.go  # 插件扫描 / 解压 / 文件管理
+│   │   └── plugin_manager.go    # Base / Active 插件加载与事件注册
+│   └── utils/                   # 通用工具
+│       ├── buffer.go            # 字节缓冲
+│       ├── json.go              # JSON 辅助
+│       ├── msgbox.go            # 系统消息框
+│       ├── path.go              # 路径处理
+│       ├── process.go           # 进程管理
+│       └── singleinstance.go    # 单实例锁
+│
+├── dameon/                      # Daemon 进程（托盘 / Core 保活）
+│   ├── daemon_fronted_bridge.go # Daemon 与前端 IPC
+│   ├── dameon_utils.go
+│   ├── get_args.go              # 启动参数解析
+│   ├── system.go                # 系统调用
+│   ├── tray.go                  # 系统托盘
+│   └── icon.ico
+│
+├── plugins/                     # Kernel / Plugin C ABI 与 Go 桥接
+│   ├── cuckoo_kernel.h          # Kernel 接口 ABI
+│   ├── cuckoo_plugin.h          # Plugin Descriptor ABI
+│   ├── kernel_warpper.go        # Go ↔ C Kernel 桥接（cgo）
+│   ├── sandbox_host.c           # Kernel 沙箱宿主（DLL / 线程 / 崩溃隔离）
 │   └── sandbox_host.h
 │
-├── dameon/
-│   ├── daemon_fronted_bridge.go
-│   ├── dameon_utils.go
-│   ├── get_args.go
-│   ├── system.go
-│   └── tray.go
+├── implement/                   # Kernel 参考实现
+│   └── Kernel/
+│       ├── MockKernel/          # 最小化 Mock 内核（验证插件加载与事件链路）
+│       │   ├── mock_kernel.h / mock_kernel.cpp
+│       │   ├── json_utils.h
+│       │   ├── CMakeLists.txt
+│       │   ├── build.bat
+│       │   ├── META-INF.json
+│       │   └── sample_plugin/   # Mock 示例插件
+│       │       ├── MockBaseDemo/
+│       │       └── MockActiveDemo/
+│       │
+│       └── PythonKernel/        # CPython 运行时内核
+│           ├── python_kernel.h / python_kernel.cpp
+│           ├── json_utils.h
+│           ├── CMakeLists.txt
+│           ├── build.bat
+│           ├── META-INF.json
+│           ├── sdk/             # Python 插件开发 SDK
+│           │   ├── install.bat  # SDK 安装脚本（一键装到 site-packages）
+│           │   └── cuckoo_sdk/
+│           │       ├── __init__.py
+│           │       └── sdk.md   # SDK 文档
+│           └── sample_plugin/   # Python 示例插件
+│               ├── PythonBaseDemo/
+│               └── PythonActiveDemo/
 │
-├── CuckooInterfaceUI/
-│   ├── Models/
-│   ├── Pages/
-│   ├── Services/
-│   ├── Behaviors/
-│   ├── Converters/
-│   └── CuckooInterfaceUI.csproj
-│
-├── main.go
-├── main_loop.go
-├── daemon_loop.go
-├── go.mod
-├── go.sum
-├── LICENSE.txt
-└── ...
+└── CuckooInterfaceUI/           # WPF 桌面前端
+    ├── App.xaml / App.xaml.cs
+    ├── MainWindow.xaml / MainWindow.xaml.cs
+    ├── CuckooInterfaceUI.csproj
+    ├── CuckooInterfaceUI.slnx
+    ├── AssemblyInfo.cs
+    ├── Models/                  # 前端数据模型
+    │   ├── EventRecord.cs
+    │   ├── LogEntry.cs
+    │   ├── PluginInfo.cs
+    │   ├── SettingsPanel.cs
+    │   └── SystemOverview.cs
+    ├── Pages/                   # 功能页面
+    │   ├── HomePage.xaml        # 概览
+    │   ├── PluginsPage.xaml     # 插件管理
+    │   ├── ConfigPage.xaml      # 配置
+    │   ├── EventsPage.xaml      # 事件记录
+    │   ├── LogsPage.xaml        # 日志
+    │   └── SettingsPage.xaml    # 设置
+    ├── Services/
+    │   └── CoreBackend.cs       # 与 Core / Daemon IPC 通信
+    ├── Behaviors/
+    │   └── SmoothScrollBehavior.cs
+    └── Converters/
+        └── VerticalTextConverter.cs
 ```
 
 ---
@@ -307,6 +373,18 @@ CuckooInterface/
 ## 🔨 构建
 
 当前项目包含 Go Core、C/CGO 桥接代码以及 .NET WPF UI，因此构建环境应为 Windows 开发环境。
+
+### 一键构建（推荐）
+
+根目录提供 `build.bat`，自动完成 Go Core、WPF UI 与 PythonKernel 的构建与打包：
+
+```bat
+build.bat
+```
+
+前置依赖：`go`、`dotnet`、`cmake`、`python` 均在 PATH 中。
+
+产物输出到 `bin/` 目录，包含 `CuckooInterface.exe`、WPF UI 文件以及 `user/Kernel/PythonKernel.zip`。
 
 ### 构建 Go Core
 
@@ -331,6 +409,15 @@ WPF-UI 3.0.5
 ```bash
 dotnet build CuckooInterfaceUI/CuckooInterfaceUI.csproj
 ```
+
+### 构建 PythonKernel
+
+```bat
+cd implement\Kernel\PythonKernel
+build.bat
+```
+
+产物为 `build\Release\export.dll`，需与 `META-INF.json`、`sdk/` 目录一同打包为 `PythonKernel.zip`，放入 `user/Kernel/` 目录。
 
 ---
 
