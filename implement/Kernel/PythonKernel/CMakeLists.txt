@@ -1,4 +1,4 @@
-﻿# CMakeLists.txt —— PythonKernel 构建脚本
+# CMakeLists.txt —— PythonKernel 构建脚本
 #
 # 产出：export.dll（CuckooInterface 内核插件入口约定名）
 # 用法：
@@ -12,8 +12,10 @@
 #     ├── binary/
 #     │   └── export.dll
 #     └── sdk/
+#         ├── install.bat
 #         └── cuckoo_sdk/
-#             └── __init__.py
+#             ├── __init__.py
+#             └── sdk.md
 # 然后放入 user/Kernel/ 目录即可被 CuckooInterface 加载。
 
 cmake_minimum_required(VERSION 3.15)
