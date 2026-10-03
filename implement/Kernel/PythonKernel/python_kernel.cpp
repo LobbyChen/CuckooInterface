@@ -1,11 +1,3 @@
-// python_kernel.cpp —— 支持插件顶层阻塞的多线程版本
-//
-// 核心改动：
-//   1. InitRuntime 释放主线程 GIL（PyEval_SaveThread）
-//   2. LoadPlugin 将 exec_module 放入插件专属线程，轮询等待 _listeners
-//   3. TriggerCallback 在调用线程中直接获取 GIL 执行（不依赖工作线程）
-//   4. UnloadPlugin 用 PyThreadState_SetAsyncExc 中断阻塞循环后 join
-
 #include "python_kernel.h"
 #include "json_utils.h"
 
@@ -33,6 +25,69 @@ class GilGuard {
  private:
   PyGILState_STATE state_;
 };
+
+// py_thread_id 在 worker 线程写入、卸载线程读取。由于头文件中的字段
+// 目前保持为 unsigned long，这里用 Win32 原子操作避免裸读写的数据竞争。
+static unsigned long LoadPyThreadID(PythonPluginInstance* inst) {
+  return static_cast<unsigned long>(
+      InterlockedCompareExchange(
+          reinterpret_cast<volatile LONG*>(&inst->py_thread_id), 0, 0));
+}
+
+static void StorePyThreadID(PythonPluginInstance* inst, unsigned long value) {
+  InterlockedExchange(
+      reinterpret_cast<volatile LONG*>(&inst->py_thread_id),
+      static_cast<LONG>(value));
+}
+
+// 请求插件工作线程退出。PyThreadState_SetAsyncExc 是 Python C API，
+// 调用时必须持有 GIL；但 join() 绝不能在持有 GIL 时执行。
+static int StopPythonWorker(PythonPluginInstance* inst,
+                            const CuckooHostAPI* host_api,
+                            const char* reason) {
+  if (!inst || !inst->worker.joinable()) return 1;
+
+  int result = 0;
+  const unsigned long thread_id = LoadPyThreadID(inst);
+
+  if (thread_id != 0) {
+    {
+      GilGuard gil;
+
+      result = PyThreadState_SetAsyncExc(thread_id, PyExc_SystemExit);
+
+      // 官方 API 约定：0 表示未找到线程，1 表示成功，>1 表示
+      // 错误地影响了多个线程，此时必须回滚。
+      if (result > 1) {
+        PyThreadState_SetAsyncExc(thread_id, nullptr);
+        result = -1;
+      }
+    }  // 先释放 GIL，让目标线程有机会处理 SystemExit
+  } else {
+    // 正常情况下 worker 启动后会很快设置 py_thread_id。
+    // 如果线程已经结束，则直接 join；否则 join 等待其自然结束。
+    result = 0;
+  }
+
+  if (host_api && host_api->log_info) {
+    std::string msg = "[PythonKernel] stopping worker";
+    if (reason && *reason) {
+      msg += " (";
+      msg += reason;
+      msg += ")";
+    }
+    msg += " plugin=" + inst->plugin_id;
+    msg += " tid=" + std::to_string(thread_id);
+    msg += " SetAsyncExc=" + std::to_string(result);
+    host_api->log_info(msg.c_str());
+  }
+
+  // 绝对不要持有 GIL join。目标 Python 线程需要重新取得 GIL 才能
+  // 处理异步异常并从 exec_module 返回。
+  inst->worker.join();
+  StorePyThreadID(inst, 0);
+  return result;
+}
 
 // ===========================================================================
 // 静态 C 回调
@@ -303,7 +358,7 @@ int PythonKernel::LoadPlugin(const char* plugin_path,
   std::string pp(plugin_path), mn(module_name);
   inst->worker = std::thread([inst, pp, mn, this]() {
     GilGuard gil;
-    inst->py_thread_id = PyThreadState_Get()->thread_id;
+    StorePyThreadID(inst, PyThreadState_Get()->thread_id);
 
     std::string file_path = pp + "/main.py";
 
@@ -330,8 +385,14 @@ int PythonKernel::LoadPlugin(const char* plugin_path,
     Py_DECREF(loader);
 
     if (!result) {
-      LogPythonException("exec_module " + file_path);
-      inst->exec_failed.store(true);
+      // UnloadPlugin/ShutdownRuntime 通过 SetAsyncExc 注入 SystemExit 时，
+      // 这里是正常退出路径，不应该被记录成 exec_failed。
+      if (PyErr_ExceptionMatches(PyExc_SystemExit)) {
+        PyErr_Clear();
+      } else {
+        LogPythonException("exec_module " + file_path);
+        inst->exec_failed.store(true);
+      }
       return;
     }
     Py_DECREF(result);
@@ -428,11 +489,9 @@ void PythonKernel::UnloadPlugin(CuckooPluginHandle handle) {
   if (!handle) return;
   auto* inst = static_cast<PythonPluginInstance*>(handle);
 
-  //  用 PyThreadState_SetAsyncExc 中断阻塞的顶层代码
-  if (inst->py_thread_id != 0 && inst->worker.joinable()) {
-    PyThreadState_SetAsyncExc(inst->py_thread_id, PyExc_SystemExit);
-    inst->worker.join();  // 等待线程退出
-  }
+  // 先请求 Python 工作线程退出；SetAsyncExc 必须在持有 GIL 时调用，
+  // 但 join 必须在释放 GIL 后执行。
+  StopPythonWorker(inst, host_api_, "plugin unload");
 
   // 清理 Python 对象（此时线程已退出，安全操作）
   {
@@ -483,10 +542,7 @@ void PythonKernel::ShutdownRuntime() {
     to_delete.swap(plugins_);
   }
   for (auto* inst : to_delete) {
-    if (inst->py_thread_id != 0 && inst->worker.joinable()) {
-      PyThreadState_SetAsyncExc(inst->py_thread_id, PyExc_SystemExit);
-      inst->worker.join();
-    }
+    StopPythonWorker(inst, host_api_, "runtime shutdown");
     {
       GilGuard gil;
       for (auto* cb : inst->callbacks) { Py_XDECREF(cb->callable); delete cb; }
