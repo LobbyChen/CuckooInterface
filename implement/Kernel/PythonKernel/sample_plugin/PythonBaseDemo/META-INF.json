@@ -1,0 +1,10 @@
+{
+  "name": "PythonBaseDemo",
+  "id": "com.cuckoo.plugin.python.base_demo",
+  "type": 42,
+  "version": "1.0.0",
+  "description": "Python 运行时的 Base 插件示例，提供 python.timer.tick 事件",
+  "runtime_type": "python",
+  "tag": ["demo", "python"],
+  "events": ["python.timer.tick"]
+}

@@ -39,6 +39,28 @@ go.work.sum
 [Cc]uckooInterfaceUI/obj/
 [Cc]uckooInterfaceUI/.vs/
 [Cc]uckooInterfaceUI/.vscode/
+
+# PluginBuild Result
+implement/build/
+
+# CMake build directories for kernels
+implement/Kernel/*/build/
+cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled object files
+*.o
+*.obj
+*.a
+*.lib
+*.exp
+
 # Visual Studio user-specific files
 *.suo
 *.user
@@ -47,7 +69,6 @@ go.work.sum
 
 # Visual Studio temporary files
 *_wpftmp.csproj
-*.log
 *.tlog
 *.vspscc
 *.vssscc
@@ -71,7 +92,64 @@ _pkginfo.txt
 *.appxbundle
 *.appxupload
 
+# Runtime directories
+user/
+configs/
+logs/
+
+# Extracted runtime plugins (keep kernel source files)
+plugins/PythonActiveDemo/
+plugins/PythonBaseDemo/
+plugins/PythonKernel/
+plugins/MockActiveDemo/
+plugins/MockBaseDemo/
+plugins/MockKernel/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python profiling and debug
+*.pstats
+.profile
+
+# Temporary log files
+*.log
+core_stdout.log
+core_stderr.log
+help_err.txt
+help_out.txt
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
 # Other common ignores
 Thumbs.db
 .DS_Store
-*.zip
+desktop.ini

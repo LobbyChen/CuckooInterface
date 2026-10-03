@@ -1,0 +1,9 @@
+{
+  "name": "PythonKernel",
+  "id": "com.cuckoo.kernel.python",
+  "type": 10,
+  "version": "1.0.0",
+  "description": "CPython 3.x 运行时内核，支持加载 Python 编写的 Base/Active 插件",
+  "runtime_type": "python",
+  "tag": ["kernel", "python"]
+}

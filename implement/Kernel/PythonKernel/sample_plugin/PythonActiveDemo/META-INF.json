@@ -1,0 +1,10 @@
+{
+  "name": "PythonActiveDemo",
+  "id": "com.cuckoo.plugin.python.active_demo",
+  "type": 30,
+  "version": "1.0.0",
+  "description": "Python 运行时的 Active 插件示例，订阅 python.timer.tick 事件",
+  "runtime_type": "python",
+  "tag": ["demo", "python"],
+  "listeners": ["python.timer.tick"]
+}
