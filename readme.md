@@ -17,9 +17,11 @@ CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插�
 
 我们希望能解决这项问题，因此编写了CuckooInterface。
 
-官方提供Python Kernel，只需要安装python就可以使用Python进行插件开发。
+官方提供Python Kernel和Lua SDK，只需要安装python就可以使用Python进行插件开发，也可以采用Lua进行开发。
 
-请阅读[PythonSDK](./implement/Kernel/PythonKernel/sdk/cuckoo_sdk/sdk.md)
+请阅读
+- [Python SDK](./implement/Kernel/PythonKernel/sdk/cuckoo_sdk/sdk.md)
+- [Lua SDK](./implement\Kernel\LuaKernel\README.md)
 
 ---
 
