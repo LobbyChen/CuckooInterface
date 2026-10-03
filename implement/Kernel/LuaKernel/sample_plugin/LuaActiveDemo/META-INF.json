@@ -1,0 +1,9 @@
+{
+  "name": "Lua Active Demo",
+  "id": "com.cuckoo.demo.lua_active",
+  "type": 30,
+  "version": "1.0.0",
+  "description": "Lua Active plugin example",
+  "runtime_type": "lua",
+  "listeners": ["lua.timer.tick"]
+}

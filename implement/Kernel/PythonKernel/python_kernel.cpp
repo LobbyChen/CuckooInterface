@@ -1,91 +1,96 @@
-// python_kernel.cpp —— PythonKernel 实现
+// python_kernel.cpp —— 支持插件顶层阻塞的多线程版本
 //
-// 通过嵌入 CPython 解释器，加载并执行 Python 插件。
-// 所有 Python API 调用都在沙箱工作线程上同步执行（GIL 由该线程持有）。
+// 核心改动：
+//   1. InitRuntime 释放主线程 GIL（PyEval_SaveThread）
+//   2. LoadPlugin 将 exec_module 放入插件专属线程，轮询等待 _listeners
+//   3. TriggerCallback 在调用线程中直接获取 GIL 执行（不依赖工作线程）
+//   4. UnloadPlugin 用 PyThreadState_SetAsyncExc 中断阻塞循环后 join
 
 #include "python_kernel.h"
 #include "json_utils.h"
 
 #include <windows.h>
-
 #include <cstring>
 #include <thread>
+#include <chrono>
 
 namespace python_kernel {
 
-// 内核元数据常量
-static const char* kKernelID = "com.cuckoo.kernel.python";
+static const char* kKernelID   = "com.cuckoo.kernel.python";
 static const char* kKernelName = "Python Kernel";
-static const char* kVersion = "1.0.0";
-static const char* kRuntime = "python";
+static const char* kVersion    = "2.0.0";
+static const char* kRuntime    = "python";
 
-// ---------------------------------------------------------------------------
-// 静态 C 回调：将宿主 API 暴露给 Python 层
-// 这些函数通过 cuckoo_sdk._xxx_impl 变量注入到 SDK 模块中。
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// RAII GIL 守卫
+// ===========================================================================
+class GilGuard {
+ public:
+  GilGuard()  { state_ = PyGILState_Ensure(); }
+  ~GilGuard() { PyGILState_Release(state_); }
+  GilGuard(const GilGuard&) = delete;
+  GilGuard& operator=(const GilGuard&) = delete;
+ private:
+  PyGILState_STATE state_;
+};
+
+// ===========================================================================
+// 静态 C 回调
+// ===========================================================================
 static PythonKernel* g_kernel = nullptr;
 
-static PyObject* PyEmitEvent(PyObject* /*self*/, PyObject* args) {
+static PyObject* PyEmitEvent(PyObject*, PyObject* args) {
   const char* event_name = nullptr;
-  const char* payload = nullptr;
+  const char* payload    = nullptr;
   if (!PyArg_ParseTuple(args, "ss", &event_name, &payload)) return nullptr;
-  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->emit_event) {
+  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->emit_event)
     g_kernel->HostAPI()->emit_event(event_name, payload);
-  }
   Py_RETURN_NONE;
 }
 
-static PyObject* PyLogInfo(PyObject* /*self*/, PyObject* args) {
+static PyObject* PyLogInfo(PyObject*, PyObject* args) {
   const char* msg = nullptr;
   if (!PyArg_ParseTuple(args, "s", &msg)) return nullptr;
-  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->log_info) {
+  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->log_info)
     g_kernel->HostAPI()->log_info(msg);
-  }
   Py_RETURN_NONE;
 }
 
-static PyObject* PyLogError(PyObject* /*self*/, PyObject* args) {
+static PyObject* PyLogError(PyObject*, PyObject* args) {
   const char* msg = nullptr;
   if (!PyArg_ParseTuple(args, "s", &msg)) return nullptr;
-  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->log_error) {
+  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->log_error)
     g_kernel->HostAPI()->log_error(msg);
-  }
   Py_RETURN_NONE;
 }
 
-static PyObject* PyGetPluginConfig(PyObject* /*self*/, PyObject* args) {
+static PyObject* PyGetPluginConfig(PyObject*, PyObject* args) {
   const char* plugin_name = nullptr;
   if (!PyArg_ParseTuple(args, "s", &plugin_name)) return nullptr;
   const char* raw = "";
-  if (g_kernel && g_kernel->HostAPI() &&
-      g_kernel->HostAPI()->get_plugin_config) {
+  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->get_plugin_config)
     raw = g_kernel->HostAPI()->get_plugin_config(plugin_name);
-  }
   return PyUnicode_FromString(raw ? raw : "");
 }
 
-static PyMethodDef kEmitEventDef = {"_impl", PyEmitEvent, METH_VARARGS,
-                                    "emit_event host callback"};
-static PyMethodDef kLogInfoDef = {"_impl", PyLogInfo, METH_VARARGS,
-                                  "log_info host callback"};
-static PyMethodDef kLogErrorDef = {"_impl", PyLogError, METH_VARARGS,
-                                   "log_error host callback"};
-static PyMethodDef kGetPluginConfigDef = {
-    "_impl", PyGetPluginConfig, METH_VARARGS, "get_plugin_config host callback"};
+static PyMethodDef kEmitEventDef      = {"_impl", PyEmitEvent,      METH_VARARGS, ""};
+static PyMethodDef kLogInfoDef        = {"_impl", PyLogInfo,        METH_VARARGS, ""};
+static PyMethodDef kLogErrorDef       = {"_impl", PyLogError,       METH_VARARGS, ""};
+static PyMethodDef kGetPluginConfigDef= {"_impl", PyGetPluginConfig,METH_VARARGS, ""};
 
-// ---------------------------------------------------------------------------
-// PythonKernel 实现
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// PythonKernel
+// ===========================================================================
 
 PythonKernel& PythonKernel::Instance() {
   static PythonKernel inst;
   return inst;
 }
 
-const char* PythonKernel::KernelID() { return kKernelID; }
+const char* PythonKernel::KernelID()   { return kKernelID; }
 const char* PythonKernel::KernelName() { return kKernelName; }
-const char* PythonKernel::Version() { return kVersion; }
-const char* PythonKernel::Runtime() { return kRuntime; }
+const char* PythonKernel::Version()    { return kVersion; }
+const char* PythonKernel::Runtime()    { return kRuntime; }
 
 uint64_t PythonKernel::NextInstanceID() {
   return instance_counter_.fetch_add(1);
@@ -101,9 +106,7 @@ std::string PythonKernel::GetKernelDllDir() {
   if (hModule && GetModuleFileNameA(hModule, dll_path, MAX_PATH)) {
     std::string p(dll_path);
     auto pos = p.find_last_of("\\/");
-    if (pos != std::string::npos) {
-      return p.substr(0, pos);
-    }
+    if (pos != std::string::npos) return p.substr(0, pos);
   }
   return ".";
 }
@@ -125,10 +128,8 @@ void PythonKernel::LogPythonException(const std::string& context) {
   } else {
     msg += "unknown exception";
   }
-
-  if (host_api_ && host_api_->log_error) {
+  if (host_api_ && host_api_->log_error)
     host_api_->log_error(msg.c_str());
-  }
 
   Py_XDECREF(type);
   Py_XDECREF(value);
@@ -138,17 +139,14 @@ void PythonKernel::LogPythonException(const std::string& context) {
 bool PythonKernel::InjectHostAPIIntoSDK() {
   if (!sdk_module_) return false;
 
-  // 将 C 函数包装为 Python 可调用对象，注入到 cuckoo_sdk._xxx_impl
-  PyObject* emit = PyCFunction_New(&kEmitEventDef, nullptr);
-  PyObject* log_info = PyCFunction_New(&kLogInfoDef, nullptr);
-  PyObject* log_error = PyCFunction_New(&kLogErrorDef, nullptr);
+  PyObject* emit       = PyCFunction_New(&kEmitEventDef, nullptr);
+  PyObject* log_info   = PyCFunction_New(&kLogInfoDef, nullptr);
+  PyObject* log_error  = PyCFunction_New(&kLogErrorDef, nullptr);
   PyObject* get_config = PyCFunction_New(&kGetPluginConfigDef, nullptr);
 
   if (!emit || !log_info || !log_error || !get_config) {
-    Py_XDECREF(emit);
-    Py_XDECREF(log_info);
-    Py_XDECREF(log_error);
-    Py_XDECREF(get_config);
+    Py_XDECREF(emit); Py_XDECREF(log_info);
+    Py_XDECREF(log_error); Py_XDECREF(get_config);
     LogPythonException("create host API wrappers");
     return false;
   }
@@ -158,10 +156,8 @@ bool PythonKernel::InjectHostAPIIntoSDK() {
   PyObject_SetAttrString(sdk_module_, "_log_error_impl", log_error);
   PyObject_SetAttrString(sdk_module_, "_get_plugin_config_impl", get_config);
 
-  Py_DECREF(emit);
-  Py_DECREF(log_info);
-  Py_DECREF(log_error);
-  Py_DECREF(get_config);
+  Py_DECREF(emit); Py_DECREF(log_info);
+  Py_DECREF(log_error); Py_DECREF(get_config);
   return true;
 }
 
@@ -174,84 +170,33 @@ void PythonKernel::ClearSDKListeners() {
   }
 }
 
-PyObject* PythonKernel::ImportPluginModule(const std::string& plugin_path,
-                                           const std::string& module_name) {
-  // 使用 importlib.util.spec_from_file_location 从指定路径加载模块
-  PyObject* importlib = PyImport_ImportModule("importlib.util");
-  if (!importlib) {
-    LogPythonException("import importlib.util");
-    return nullptr;
-  }
-
-  std::string file_path = plugin_path + "/main.py";
-
-  PyObject* spec = PyObject_CallMethod(importlib, "spec_from_file_location",
-                                       "ss", module_name.c_str(),
-                                       file_path.c_str());
-  Py_DECREF(importlib);
-  if (!spec) {
-    LogPythonException("spec_from_file_location");
-    return nullptr;
-  }
-
-  PyObject* module =
-      PyObject_CallMethod(importlib, "module_from_spec", "O", spec);
-  if (!module) {
-    LogPythonException("module_from_spec");
-    Py_DECREF(spec);
-    return nullptr;
-  }
-
-  PyObject* loader = PyObject_GetAttrString(spec, "loader");
-  Py_DECREF(spec);
-  if (!loader) {
-    LogPythonException("get loader");
-    Py_DECREF(module);
-    return nullptr;
-  }
-
-  PyObject* result =
-      PyObject_CallMethod(loader, "exec_module", "O", module);
-  Py_DECREF(loader);
-  if (!result) {
-    LogPythonException("exec_module for " + file_path);
-    Py_DECREF(module);
-    return nullptr;
-  }
-  Py_DECREF(result);
-
-  return module;  // 强引用，调用方负责释放
-}
-
 bool PythonKernel::FillListenersFromSDK(CuckooPluginDescriptor* out_descriptor,
                                          PythonPluginInstance* inst) {
   PyObject* listeners = PyObject_GetAttrString(sdk_module_, "_listeners");
   if (!listeners || !PyList_Check(listeners)) {
     Py_XDECREF(listeners);
-    if (host_api_ && host_api_->log_error) {
-      host_api_->log_error("[PythonKernel] cuckoo_sdk._listeners not found");
-    }
-    return false;
+    PyErr_Clear();
+    out_descriptor->listener_count = 0;
+    return true;  // 纯事件源插件没有监听器，不算错误
   }
 
   Py_ssize_t count = PyList_Size(listeners);
   int filled = 0;
   for (Py_ssize_t i = 0; i < count && filled < MAX_LISTENERS_PER_PLUGIN; ++i) {
-    PyObject* item = PyList_GetItem(listeners, i);  // 借引用
+    PyObject* item = PyList_GetItem(listeners, i);
     if (!item || !PyTuple_Check(item) || PyTuple_Size(item) != 2) continue;
 
-    PyObject* name_obj = PyTuple_GetItem(item, 0);  // 借引用
-    PyObject* func_obj = PyTuple_GetItem(item, 1);  // 借引用
+    PyObject* name_obj = PyTuple_GetItem(item, 0);
+    PyObject* func_obj = PyTuple_GetItem(item, 1);
     if (!name_obj || !func_obj) continue;
 
     const char* event_name = PyUnicode_AsUTF8(name_obj);
     if (!event_name) continue;
 
-    // 创建 PythonCallback，存储在实例中
+    Py_INCREF(func_obj);  //  跨线程使用，必须持有强引用
     auto* cb = new PythonCallback{func_obj, event_name};
     inst->callbacks.push_back(cb);
 
-    // 填充 CuckooListenerRecord
     CuckooListenerRecord* rec = &out_descriptor->listeners[filled];
     std::strncpy(rec->event_name, event_name, 127);
     rec->event_name[127] = '\0';
@@ -263,79 +208,69 @@ bool PythonKernel::FillListenersFromSDK(CuckooPluginDescriptor* out_descriptor,
   return true;
 }
 
+// ===========================================================================
+// InitRuntime —— 释放主线程 GIL
+// ===========================================================================
 int PythonKernel::InitRuntime(const CuckooHostAPI* api) {
   host_api_ = api;
-  g_kernel = this;
-
+  g_kernel  = this;
   if (python_initialized_) return 0;
 
-  // 初始化 Python 解释器
   Py_Initialize();
   if (!Py_IsInitialized()) {
-    if (host_api_ && host_api_->log_error) {
+    if (host_api_ && host_api_->log_error)
       host_api_->log_error("[PythonKernel] Py_Initialize failed");
-    }
     return -1;
   }
+
+  //  释放主线程 GIL，让工作线程 / Python threading 都能并发
+  main_thread_state_ = PyEval_SaveThread();
   python_initialized_ = true;
 
-  // 将 SDK 目录加入 sys.path
-  // DLL 位于 <kernel_dir>/binary/，SDK 位于 <kernel_dir>/sdk/
-  std::string binary_dir = GetKernelDllDir();
-  std::string sdk_dir = binary_dir + "/../sdk";
-  char resolved[MAX_PATH];
-  if (GetFullPathNameA(sdk_dir.c_str(), MAX_PATH, resolved, nullptr)) {
-    sdk_dir = resolved;
-  }
-  if (host_api_ && host_api_->log_info) {
-    std::string dbg = "[PythonKernel] binary_dir=" + binary_dir +
-                      " sdk_dir=" + sdk_dir;
-    host_api_->log_info(dbg.c_str());
-  }
-  PyObject* sys_path = PySys_GetObject("path");  // 借引用
-  if (sys_path) {
-    PyObject* sdk_path = PyUnicode_FromString(sdk_dir.c_str());
-    if (sdk_path) {
-      PyList_Insert(sys_path, 0, sdk_path);
-      Py_DECREF(sdk_path);
+  {
+    GilGuard gil;  // 临时获取 GIL 完成初始化
+
+    std::string binary_dir = GetKernelDllDir();
+    std::string sdk_dir = binary_dir + "/../sdk";
+    char resolved[MAX_PATH];
+    if (GetFullPathNameA(sdk_dir.c_str(), MAX_PATH, resolved, nullptr))
+      sdk_dir = resolved;
+
+    if (host_api_ && host_api_->log_info) {
+      std::string dbg = "[PythonKernel] sdk_dir=" + sdk_dir;
+      host_api_->log_info(dbg.c_str());
     }
+
+    PyObject* sys_path = PySys_GetObject("path");
+    if (sys_path) {
+      PyObject* sdk_path = PyUnicode_FromString(sdk_dir.c_str());
+      if (sdk_path) { PyList_Insert(sys_path, 0, sdk_path); Py_DECREF(sdk_path); }
+    }
+
+    sdk_module_ = PyImport_ImportModule("cuckoo_sdk");
+    if (!sdk_module_) { LogPythonException("import cuckoo_sdk"); return -1; }
+    if (!InjectHostAPIIntoSDK()) return -1;
   }
 
-  // 导入 cuckoo_sdk
-  sdk_module_ = PyImport_ImportModule("cuckoo_sdk");
-  if (!sdk_module_) {
-    LogPythonException("import cuckoo_sdk");
-    return -1;
-  }
-
-  // 注入宿主 API
-  if (!InjectHostAPIIntoSDK()) {
-    return -1;
-  }
-
-  if (host_api_ && host_api_->log_info) {
-    host_api_->log_info("[PythonKernel] init_runtime called, Python ready");
-  }
+  if (host_api_ && host_api_->log_info)
+    host_api_->log_info("[PythonKernel] Python ready (top-level blocking supported)");
   return 0;
 }
 
+// ===========================================================================
+// RunLoop
+// ===========================================================================
 void PythonKernel::RunLoop(const CuckooHostAPI* api) {
-  if (api && api->log_info) {
-    api->log_info("[PythonKernel] run_loop starting");
-  }
-  // 通知宿主已进入循环
-  if (api && api->into_loop_report) {
-    api->into_loop_report(kKernelID);
-  }
-  // Python 回调由 trigger_callback 同步调用，无需后台事件循环
-  while (!shutdown_flag_.load()) {
+  if (api && api->log_info) api->log_info("[PythonKernel] run_loop starting");
+  if (api && api->into_loop_report) api->into_loop_report(kKernelID);
+  while (!shutdown_flag_.load())
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-  if (api && api->log_info) {
-    api->log_info("[PythonKernel] run_loop exiting");
-  }
+  if (api && api->log_info) api->log_info("[PythonKernel] run_loop exiting");
 }
 
+// ===========================================================================
+// LoadPlugin —— exec_module 放入工作线程，轮询等待 _listeners
+// ===========================================================================
 int PythonKernel::LoadPlugin(const char* plugin_path,
                               const char* manifest_json,
                               CuckooPluginDescriptor* out_descriptor) {
@@ -345,179 +280,234 @@ int PythonKernel::LoadPlugin(const char* plugin_path,
   std::string plugin_id, runtime, name;
   if (!mock_json::GetStringField(manifest, "id", plugin_id) ||
       !mock_json::GetStringField(manifest, "runtime_type", runtime)) {
-    if (host_api_ && host_api_->log_error) {
-      host_api_->log_error("[PythonKernel] plugin manifest missing id/runtime_type");
-    }
+    if (host_api_ && host_api_->log_error)
+      host_api_->log_error("[PythonKernel] manifest missing id/runtime_type");
     return -1;
   }
   mock_json::GetStringField(manifest, "name", name);
 
-  // 生成唯一模块名，避免多插件 main.py 命名冲突
   std::string module_name = "cuckoo_plugin_" + plugin_id;
-  // 替换非法字符
-  for (auto& c : module_name) {
+  for (auto& c : module_name)
     if (c == '.' || c == '-') c = '_';
-  }
 
-  // 清空 SDK 监听器注册表
-  ClearSDKListeners();
-
-  // 导入插件模块
-  PyObject* module = ImportPluginModule(plugin_path, module_name);
-  if (!module) {
-    return -1;
-  }
-
-  // 创建插件实例
   auto* inst = new PythonPluginInstance();
-  inst->instance_id = NextInstanceID();
-  inst->plugin_id = plugin_id;
+  inst->instance_id      = NextInstanceID();
+  inst->plugin_id        = plugin_id;
   inst->language_runtime = runtime;
-  inst->plugin_path = plugin_path;
-  inst->module = module;
+  inst->plugin_path      = plugin_path;
 
-  // 从 SDK 读取监听器并填充描述符
-  std::memset(out_descriptor, 0, sizeof(CuckooPluginDescriptor));
-  out_descriptor->instance_id = inst->instance_id;
-  std::strncpy(out_descriptor->plugin_id, plugin_id.c_str(), 63);
-  out_descriptor->plugin_id[63] = '\0';
-  std::strncpy(out_descriptor->language_runtime, runtime.c_str(), 31);
-  out_descriptor->language_runtime[31] = '\0';
+  // 1) 清空上一轮 _listeners
+  { GilGuard gil; ClearSDKListeners(); }
 
-  if (!FillListenersFromSDK(out_descriptor, inst)) {
-    delete inst;
-    Py_DECREF(module);
-    return -1;
+  // 2)  启动工作线程执行 exec_module（允许顶层阻塞）
+  std::string pp(plugin_path), mn(module_name);
+  inst->worker = std::thread([inst, pp, mn, this]() {
+    GilGuard gil;
+    inst->py_thread_id = PyThreadState_Get()->thread_id;
+
+    std::string file_path = pp + "/main.py";
+
+    PyObject* importlib = PyImport_ImportModule("importlib.util");
+    if (!importlib) { LogPythonException("import importlib.util"); inst->exec_failed.store(true); return; }
+
+    PyObject* spec = PyObject_CallMethod(importlib, "spec_from_file_location",
+                                         "ss", mn.c_str(), file_path.c_str());
+    if (!spec) { Py_DECREF(importlib); LogPythonException("spec"); inst->exec_failed.store(true); return; }
+
+    PyObject* module = PyObject_CallMethod(importlib, "module_from_spec", "O", spec);
+    Py_DECREF(importlib);
+    if (!module) { Py_DECREF(spec); LogPythonException("module_from_spec"); inst->exec_failed.store(true); return; }
+
+    //  先设置 inst->module，即使 exec_module 阻塞也能被 UnloadPlugin 清理
+    inst->module = module;
+
+    PyObject* loader = PyObject_GetAttrString(spec, "loader");
+    Py_DECREF(spec);
+    if (!loader) { LogPythonException("get loader"); inst->exec_failed.store(true); return; }
+
+    //  执行模块 —— 如果顶层有 while True，这里永远不返回
+    PyObject* result = PyObject_CallMethod(loader, "exec_module", "O", module);
+    Py_DECREF(loader);
+
+    if (!result) {
+      LogPythonException("exec_module " + file_path);
+      inst->exec_failed.store(true);
+      return;
+    }
+    Py_DECREF(result);
+    inst->exec_done.store(true);
+  });
+
+  // 3)  轮询等待 @on_event 注册完成（最多 3 秒）
+  bool ready = false;
+  for (int i = 0; i < 300; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    if (inst->exec_failed.load()) {
+      if (inst->worker.joinable()) inst->worker.join();
+      delete inst;
+      return -1;
+    }
+    if (inst->exec_done.load()) { ready = true; break; }
+
+    {
+      GilGuard gil;
+      PyObject* ls = PyObject_GetAttrString(sdk_module_, "_listeners");
+      if (ls && PyList_Check(ls) && PyList_Size(ls) > 0) {
+        Py_DECREF(ls);
+        ready = true;
+        break;
+      }
+      Py_XDECREF(ls);
+    }
   }
 
-  // 从 manifest 解析提供的事件列表
-  std::vector<std::string> events;
-  mock_json::GetStringArrayField(manifest, "events", events);
-  int ec = 0;
-  for (const auto& ev : events) {
-    if (ec >= MAX_EVENTS_PER_PLUGIN) break;
-    std::strncpy(out_descriptor->provided_events[ec].event_name, ev.c_str(), 127);
-    out_descriptor->provided_events[ec].event_name[127] = (char)0;
-    ++ec;
+  // 4) 填充 descriptor
+  {
+    GilGuard gil;
+    std::memset(out_descriptor, 0, sizeof(CuckooPluginDescriptor));
+    out_descriptor->instance_id = inst->instance_id;
+    std::strncpy(out_descriptor->plugin_id, plugin_id.c_str(), 63);
+    std::strncpy(out_descriptor->language_runtime, runtime.c_str(), 31);
+
+    FillListenersFromSDK(out_descriptor, inst);
+
+    std::vector<std::string> events;
+    mock_json::GetStringArrayField(manifest, "events", events);
+    int ec = 0;
+    for (const auto& ev : events) {
+      if (ec >= MAX_EVENTS_PER_PLUGIN) break;
+      std::strncpy(out_descriptor->provided_events[ec].event_name, ev.c_str(), 127);
+      ++ec;
+    }
+    out_descriptor->event_count = ec;
   }
-  out_descriptor->event_count = ec;
 
   out_descriptor->internal_object_ptr = static_cast<void*>(inst);
-
   {
     std::lock_guard<std::mutex> lk(plugins_mu_);
     plugins_.push_back(inst);
   }
 
   if (host_api_ && host_api_->log_info) {
-    std::string msg = "[PythonKernel] loaded plugin: " + plugin_id +
-                      " (runtime=" + runtime +
-                      ", listeners=" +
-                      std::to_string(out_descriptor->listener_count) +
-                      ", events=" + std::to_string(ec) + ")";
+    std::string msg = "[PythonKernel] loaded: " + plugin_id +
+                      " listeners=" + std::to_string(out_descriptor->listener_count) +
+                      " events=" + std::to_string(out_descriptor->event_count);
     host_api_->log_info(msg.c_str());
   }
-
   return 0;
 }
 
+// ===========================================================================
+// TriggerCallback —— 直接在调用线程获取 GIL 执行
+// （不投递到工作线程，因为工作线程可能被顶层阻塞循环占用）
+// ===========================================================================
 void PythonKernel::TriggerCallback(CuckooPluginHandle handle,
                                     const CuckooListenerRecord* listener,
                                     const char* payload) {
   if (!handle || !listener) return;
-
   auto* cb = static_cast<PythonCallback*>(listener->function);
   if (!cb || !cb->callable) return;
 
-  // 构造参数元组 (payload,)
+  GilGuard gil;  //  在调用线程中获取 GIL
+
   PyObject* args = PyTuple_Pack(1, PyUnicode_FromString(payload ? payload : ""));
-  if (!args) {
-    LogPythonException("build callback args");
-    return;
-  }
+  if (!args) { LogPythonException("build args"); return; }
 
   PyObject* result = PyObject_CallObject(cb->callable, args);
   Py_DECREF(args);
 
-  if (!result) {
-    LogPythonException("callback for " + cb->event_name);
-    return;
-  }
+  if (!result) { LogPythonException("callback " + cb->event_name); return; }
   Py_DECREF(result);
 }
 
+// ===========================================================================
+// UnloadPlugin —— 异步中断 + join
+// ===========================================================================
 void PythonKernel::UnloadPlugin(CuckooPluginHandle handle) {
   if (!handle) return;
   auto* inst = static_cast<PythonPluginInstance*>(handle);
 
-  // 清理回调对象
-  for (auto* cb : inst->callbacks) {
-    delete cb;
+  //  用 PyThreadState_SetAsyncExc 中断阻塞的顶层代码
+  if (inst->py_thread_id != 0 && inst->worker.joinable()) {
+    PyThreadState_SetAsyncExc(inst->py_thread_id, PyExc_SystemExit);
+    inst->worker.join();  // 等待线程退出
   }
-  inst->callbacks.clear();
 
-  // 释放模块
-  if (inst->module) {
-    // 从 sys.modules 中移除，避免下次导入时复用旧模块
-    PyObject* sys_modules = PyImport_GetModuleDict();
-    if (sys_modules) {
-      std::string mod_name = "cuckoo_plugin_" + inst->plugin_id;
-      for (auto& c : mod_name) {
-        if (c == '.' || c == '-') c = '_';
-      }
-      PyDict_DelItemString(sys_modules, mod_name.c_str());
+  // 清理 Python 对象（此时线程已退出，安全操作）
+  {
+    GilGuard gil;
+
+    for (auto* cb : inst->callbacks) {
+      Py_XDECREF(cb->callable);
+      delete cb;
     }
-    Py_DECREF(inst->module);
-    inst->module = nullptr;
+    inst->callbacks.clear();
+
+    if (inst->module) {
+      PyObject* sys_modules = PyImport_GetModuleDict();
+      if (sys_modules) {
+        std::string mod_name = "cuckoo_plugin_" + inst->plugin_id;
+        for (auto& c : mod_name)
+          if (c == '.' || c == '-') c = '_';
+        PyDict_DelItemString(sys_modules, mod_name.c_str());
+      }
+      Py_DECREF(inst->module);
+      inst->module = nullptr;
+    }
   }
 
   {
     std::lock_guard<std::mutex> lk(plugins_mu_);
     for (auto it = plugins_.begin(); it != plugins_.end(); ++it) {
-      if (*it == inst) {
-        plugins_.erase(it);
-        break;
-      }
+      if (*it == inst) { plugins_.erase(it); break; }
     }
   }
 
   if (host_api_ && host_api_->log_info) {
-    std::string msg = "[PythonKernel] unloaded plugin: " + inst->plugin_id;
+    std::string msg = "[PythonKernel] unloaded: " + inst->plugin_id;
     host_api_->log_info(msg.c_str());
   }
-
   delete inst;
 }
 
+// ===========================================================================
+// ShutdownRuntime
+// ===========================================================================
 void PythonKernel::ShutdownRuntime() {
   shutdown_flag_.store(true);
 
-  // 卸载所有插件
   std::vector<PythonPluginInstance*> to_delete;
   {
     std::lock_guard<std::mutex> lk(plugins_mu_);
     to_delete.swap(plugins_);
   }
   for (auto* inst : to_delete) {
-    for (auto* cb : inst->callbacks) delete cb;
-    if (inst->module) Py_DECREF(inst->module);
+    if (inst->py_thread_id != 0 && inst->worker.joinable()) {
+      PyThreadState_SetAsyncExc(inst->py_thread_id, PyExc_SystemExit);
+      inst->worker.join();
+    }
+    {
+      GilGuard gil;
+      for (auto* cb : inst->callbacks) { Py_XDECREF(cb->callable); delete cb; }
+      if (inst->module) Py_DECREF(inst->module);
+    }
     delete inst;
   }
 
-  // 释放 SDK 模块
-  Py_XDECREF(sdk_module_);
-  sdk_module_ = nullptr;
-
   if (python_initialized_) {
+    PyEval_RestoreThread(main_thread_state_);  //  恢复主线程 GIL
+    Py_XDECREF(sdk_module_);
+    sdk_module_ = nullptr;
     Py_Finalize();
     python_initialized_ = false;
+    main_thread_state_ = nullptr;
   }
 
-  if (host_api_ && host_api_->log_info) {
-    host_api_->log_info("[PythonKernel] shutdown_runtime called");
-  }
+  if (host_api_ && host_api_->log_info)
+    host_api_->log_info("[PythonKernel] shutdown_runtime done");
   host_api_ = nullptr;
-  g_kernel = nullptr;
+  g_kernel  = nullptr;
 }
 
 }  // namespace python_kernel
@@ -525,60 +515,39 @@ void PythonKernel::ShutdownRuntime() {
 // ============================================================================
 //  C ABI 导出层
 // ============================================================================
+static CuckooKernelInterface g_iface = {};
+static bool g_iface_init = false;
 
-static CuckooKernelInterface g_python_kernel_interface = {};
-static bool g_interface_initialized = false;
-
-static int py_init_runtime(const CuckooHostAPI* api) {
-  return python_kernel::PythonKernel::Instance().InitRuntime(api);
+static int  c_init(const CuckooHostAPI* api) { return python_kernel::PythonKernel::Instance().InitRuntime(api); }
+static void c_loop(const CuckooHostAPI* api) { python_kernel::PythonKernel::Instance().RunLoop(api); }
+static int  c_load(const char* p, const char* m, CuckooPluginDescriptor* d) {
+  return python_kernel::PythonKernel::Instance().LoadPlugin(p, m, d);
 }
-
-static void py_run_loop(const CuckooHostAPI* api) {
-  python_kernel::PythonKernel::Instance().RunLoop(api);
+static void c_trigger(CuckooPluginHandle h, const CuckooListenerRecord* l, const char* p) {
+  python_kernel::PythonKernel::Instance().TriggerCallback(h, l, p);
 }
-
-static int py_load_plugin(const char* plugin_path, const char* manifest_json,
-                          CuckooPluginDescriptor* out_descriptor) {
-  return python_kernel::PythonKernel::Instance().LoadPlugin(
-      plugin_path, manifest_json, out_descriptor);
-}
-
-static void py_trigger_callback(CuckooPluginHandle handle,
-                                const CuckooListenerRecord* listener,
-                                const char* payload) {
-  python_kernel::PythonKernel::Instance().TriggerCallback(handle, listener,
-                                                           payload);
-}
-
-static void py_unload_plugin(CuckooPluginHandle handle) {
-  python_kernel::PythonKernel::Instance().UnloadPlugin(handle);
-}
-
-static void py_shutdown_runtime(void) {
-  python_kernel::PythonKernel::Instance().ShutdownRuntime();
-}
+static void c_unload(CuckooPluginHandle h) { python_kernel::PythonKernel::Instance().UnloadPlugin(h); }
+static void c_shutdown(void) { python_kernel::PythonKernel::Instance().ShutdownRuntime(); }
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 __declspec(dllexport) CuckooKernelInterface* get_cuckoo_kernel_interface(void) {
-  if (!g_interface_initialized) {
-    g_python_kernel_interface.kernel_id =
-        python_kernel::PythonKernel::KernelID();
-    g_python_kernel_interface.kernel_name =
-        python_kernel::PythonKernel::KernelName();
-    g_python_kernel_interface.version = python_kernel::PythonKernel::Version();
-    g_python_kernel_interface.runtime = python_kernel::PythonKernel::Runtime();
-    g_python_kernel_interface.init_runtime = py_init_runtime;
-    g_python_kernel_interface.run_loop = py_run_loop;
-    g_python_kernel_interface.load_plugin = py_load_plugin;
-    g_python_kernel_interface.trigger_callback = py_trigger_callback;
-    g_python_kernel_interface.unload_plugin = py_unload_plugin;
-    g_python_kernel_interface.shutdown_runtime = py_shutdown_runtime;
-    g_interface_initialized = true;
+  if (!g_iface_init) {
+    g_iface.kernel_id        = python_kernel::PythonKernel::KernelID();
+    g_iface.kernel_name      = python_kernel::PythonKernel::KernelName();
+    g_iface.version          = python_kernel::PythonKernel::Version();
+    g_iface.runtime          = python_kernel::PythonKernel::Runtime();
+    g_iface.init_runtime     = c_init;
+    g_iface.run_loop         = c_loop;
+    g_iface.load_plugin      = c_load;
+    g_iface.trigger_callback = c_trigger;
+    g_iface.unload_plugin    = c_unload;
+    g_iface.shutdown_runtime = c_shutdown;
+    g_iface_init = true;
   }
-  return &g_python_kernel_interface;
+  return &g_iface;
 }
 
 #ifdef __cplusplus

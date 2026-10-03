@@ -74,7 +74,7 @@ namespace CuckooInterfaceUI.Pages
                 var kernelNames = plugins.Where(p => p.Type == PluginType.Kernel).Select(p => p.Name).ToList();
                 KernelNames.Text = kernelNames.Count == 0 ? "无" : string.Join(" · ", kernelNames);
 
-                RecentEventsList.ItemsSource = recentEvents.Take(20).ToList();
+                RecentEventsList.ItemsSource = recentEvents.Take(5).ToList();
                 UpdateRecentEventsEmptyState(false);
                 _hasOverview = true;
             }

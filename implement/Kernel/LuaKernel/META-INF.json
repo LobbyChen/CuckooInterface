@@ -1,0 +1,10 @@
+{
+  "name": "Lua Kernel",
+  "id": "com.cuckoo.kernel.lua",
+  "type": 10,
+  "version": "1.0.0",
+  "description": "CuckooInterface Lua 5.5.1 runtime kernel with statically linked Lua VM",
+  "runtime_type": "lua",
+  "tag": ["kernel", "lua", "runtime"],
+  "entry": "main.lua"
+}
