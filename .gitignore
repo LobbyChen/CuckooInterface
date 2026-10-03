@@ -19,6 +19,7 @@ bin/
 coverage.*
 *.coverprofile
 profile.cov
+*.syso
 
 # Dependency directories
 vendor/
