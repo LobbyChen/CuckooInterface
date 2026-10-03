@@ -10,7 +10,11 @@ CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插�
 
 ## 它为了解决什么?
 我们观察到，当前电教场景经常存在小工具泛滥、难以管理的现状。即使ClassIsland提供了完善的自动化，但是它的能力受限于CI自动化框架的能力。
+
+如果希望系统级集成，那么它也无法运行。因为ClassIsland的插件开发依赖C#，而C#具备一定的上手难度和门槛。
+
 我们希望能解决这项问题，因此编写了CuckooInterface。
+
 官方提供Python Kernel，只需要安装python就可以使用Python进行插件开发。
 
 请阅读[PythonSDK](./implement/Kernel/PythonKernel/sdk/cuckoo_sdk/sdk.md)
