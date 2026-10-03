@@ -1,6 +1,8 @@
 # CuckooInterface
 
-
+<div align="center">
+  <img src=".\icon.png" alt="icon" height="100px" width="100px">
+</div>
 
 > 面向电教场景的**下一代插件平台**
 
