@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -435,4 +436,8 @@ func (l *Logger) GetCachedLogsLen() int {
 		return 0
 	}
 	return l.cachedCore.Len()
+}
+
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	log.Fatal(fmt.Sprintf(format, args...))
 }

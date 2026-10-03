@@ -153,6 +153,7 @@
                                         </StackPanel>
 
                                         <ui:ToggleSwitch IsChecked="{Binding IsEnabled}"
+                                                         IsEnabled="{Binding CanToggle}"
                                                          OffContent="已禁用"
                                                          OnContent="已启用"
                                                          VerticalAlignment="Center"

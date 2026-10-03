@@ -5,203 +5,171 @@ import (
 	"CuckooInterface/core/constant"
 	"CuckooInterface/core/event"
 	IPC "CuckooInterface/core/ipc"
-	ckl "CuckooInterface/core/logger"
+	"CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"context"
 	"fmt"
-	"path/filepath"
-	"sync"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
-// CoreApp 封装核心业务逻辑
-type CoreApp struct {
-	logger     *ckl.Logger
-	ctx        context.Context
-	cancel     context.CancelFunc
-	ebus       *event.EventBus
-	fileMgr    *plugin_manager.PluginFileManager
-	kernelMgr  *plugin_manager.KernelManager
-	pluginMgr  *plugin_manager.PluginManager
-	ipc        *IPC.CoreIpcInterface
-	cfgMgr     *config.CfgManager
-	runtimeDir string
-	isRunning  bool
-	mu         sync.Mutex
-}
+// RunMainLoop 实现 Normal 模式的核心主循环
+func RunMainLoop() {
+	// 确保单实例运行
+	utils.EnsureSingleInstance(NormalModePort)
 
-// NewCoreApp 创建核心应用实例
-func NewCoreApp() *CoreApp {
-	return &CoreApp{}
-}
+	// 初始化全局日志
+	log := logger.Init(logger.LoggerConfig{
+		Level:         "info",
+		LogDir:        utils.GetFolderPath(constant.LogFolder),
+		MaxSize:       100,
+		MaxBackups:    7,
+		MaxAge:        30,
+		Compress:      false,
+		ConsoleOutput: true,
+		CacheSize:     1000,
+	})
+	log.Info("CuckooInterface Core starting in Normal mode...")
 
-// Init 初始化核心组件
-func (app *CoreApp) Init() error {
-	app.mu.Lock()
-	defer app.mu.Unlock()
-
-	if app.isRunning {
-		return fmt.Errorf("core is already running")
-	}
-
-	// 每次 Core 启动都创建新的上下文，保证 Daemon 的 restartCore 可真正重新启动。
-	app.ctx, app.cancel = context.WithCancel(context.Background())
-
-	// 获取目录
-	var err error
-	app.runtimeDir, err = utils.GetExecutableDir()
-	if err != nil {
-		return fmt.Errorf("failed to get executable dir: %w", err)
-	}
-
-	// 初始化日志
-	app.logger = ckl.Init(ckl.DefaultLoggerConfig())
-	app.logger.Info("Initializing CuckooInterface Core...")
-
-	// 初始化文件夹
+	// 初始化核心工作目录结构
 	if err := utils.InitFolders(constant.Folders); err != nil {
-		return fmt.Errorf("failed to create folders: %w", err)
+		log.Fatal(fmt.Sprintf("Failed to initialize core folders: %v", err))
 	}
 
-	// 创建核心组件
-	app.ebus = event.NewEventBus()
-	app.fileMgr = plugin_manager.NewFileManager()
-	app.kernelMgr = &plugin_manager.KernelManager{}
-	app.cfgMgr = &config.CfgManager{}
-	app.cfgMgr.SetCfgPath(filepath.Join(app.runtimeDir, constant.ConfigFolder))
-
-	// 加载配置
-	if err := app.cfgMgr.LoadValidConfig(filepath.Join(app.runtimeDir, constant.ConfigFolder)); err != nil {
-		app.logger.Warnf("Failed to load valid config: %v", err)
+	// 初始化配置管理器
+	cfgManager := config.NewCfgManager()
+	cfgPath := utils.GetFolderPath(constant.ConfigFolder)
+	cfgManager.SetCfgPath(cfgPath)
+	if err := cfgManager.LoadValidConfig(cfgPath); err != nil {
+		log.Warnf("Failed to load existing configs, starting with empty config state: %v", err)
 	}
 
-	// 注入 HostAPI
-	api := &plugins.HostAPI{
-		LogError: func(msg string) { app.logger.Error(msg) },
-		LogInfo:  func(msg string) { app.logger.Info(msg) },
+	// 初始化事件总线
+	eventBus := event.NewEventBus()
+
+	// 构造 Host API：同时注入到 CGO 桥接层（全局）和 KernelManager。
+	// 必须使用同一实例，因为 KernelManager 会在 InitSingleKernelAsync 中
+	// 包装 IntoLoopReport，CGO 侧的 go_into_loop_report_gateway 读取的也是该全局实例。
+	hostAPI := &plugins.HostAPI{
+		EmitEvent: func(eventName, payload string) {
+			eventBus.Emit(eventName, payload)
+		},
+		LogInfo: func(msg string) {
+			log.Info(msg)
+		},
+		LogError: func(msg string) {
+			log.Error(msg)
+		},
 		GetPluginConfig: func(pluginName string) string {
-			var cfg config.SinglePluginConfig
-			err := app.cfgMgr.GetPluginConfig(pluginName, &cfg)
-			if err != nil {
-				app.logger.Errorf("Failed to get plugin config for %s: %v", pluginName, err)
+			var spc config.SinglePluginConfig
+			if err := cfgManager.GetPluginConfig(pluginName, &spc); err != nil {
 				return ""
 			}
-			return cfg.GetConfigString()
+			return spc.GetConfigString()
 		},
-		EmitEvent: func(eventName, payload string) {
-			app.ebus.Emit(eventName, payload)
-		},
-		IntoLoopReport: func(kernelID string) {}, // 将在 KernelManager 中具体实现
+		IntoLoopReport: nil, // 由 KernelManager 动态覆盖拦截
 		Panic: func(reason string) {
-			app.logger.Errorf("Kernel panic: %s", reason)
+			log.Errorf("KERNEL PANIC: %s", reason)
+			_ = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprintf("Kernel crashed:\n%s", reason))
 		},
 	}
-	app.kernelMgr.InjectHostAPI(api)
-	plugins.InjectHostAPI(api)
-	app.kernelMgr.InjectPluginFileManager(app.fileMgr)
+	plugins.InjectHostAPI(hostAPI)
 
-	// 解压并扫描插件
-	app.logger.Info("Unzipping and scanning plugins...")
-	if cnt, err := app.fileMgr.UnZipAllPlugins(constant.UserFolder); err != nil {
-		app.logger.Errorf("Unzip failed: %v", err)
+	// 初始化管理器层级
+	pfm := plugin_manager.NewFileManager()
+	km := plugin_manager.KernelManager{}
+	km.InjectPluginFileManager(pfm)
+	km.InjectHostAPI(hostAPI)
+	pm := plugin_manager.NewPluginManager(log, &km, pfm, eventBus)
+
+	// 8. 创建并启动 IPC 命名管道服务
+	ipcBridge := &IPC.CoreIpcInterface{}
+	ipcBridge.Init(&km, pfm, pm, eventBus, log)
+
+	if err := ipcBridge.CreatePipe(); err != nil {
+		log.Fatalf("Failed to create Core IPC pipe: %v", err)
+	}
+	defer ipcBridge.DestroyPipe()
+
+	// 在后台 Goroutine 中持续监听 UI 请求
+	go ipcBridge.ServeLoop()
+	log.Infof("Core IPC listening on pipe: %s", constant.CoreNamePipe)
+
+	// 扫描、解压并加载插件
+	loadPlugins(pfm, &km, pm, log)
+
+	// 阻塞等待退出信号或崩溃
+	waitForShutdown(&km, log)
+}
+
+// loadPlugins 负责从磁盘扫描、解压并加载所有类型的插件
+func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.KernelManager, pm *plugin_manager.PluginManager, log *logger.Logger) {
+	userDir := utils.GetFolderPath(constant.UserFolder)
+
+	// 解压用户目录下的所有插件到 runtime/plugins 目录
+	count, err := pfm.UnZipAllPlugins(userDir)
+	if err != nil {
+		log.Errorf("Failed to unzip plugins: %v", err)
 	} else {
-		app.logger.Infof("Unzipped %d plugin packages", cnt)
+		log.Infof("Successfully extracted %d plugin(s)", count)
 	}
 
-	for _, t := range []constant.PlugType{constant.KERNEL, constant.BASE, constant.ACTIVE} {
-		if cnt, err := app.fileMgr.LoadPluginMeta(t); err != nil {
-			app.logger.Errorf("Load meta for type %d failed: %v", t, err)
+	// 读取元数据
+	for _, typo := range []constant.PlugType{constant.KERNEL, constant.BASE, constant.ACTIVE} {
+		if c, err := pfm.LoadPluginMeta(typo); err != nil {
+			log.Errorf("Failed to load meta for type %v: %v", typo, err)
 		} else {
-			app.logger.Infof("Loaded %d plugins metadata for type %d", cnt, t)
+			log.Infof("Loaded %d metadata for type %v", c, typo)
 		}
 	}
 
-	// 加载并初始化 Kernel
-	app.logger.Info("Loading kernel plugins...")
-	for _, kFile := range app.fileMgr.GetKernelPlugins() {
-		if err := app.kernelMgr.LoadSingleKernel(kFile, app.ctx); err != nil {
-			app.logger.Errorf("Load kernel %s failed: %v", kFile.Name(), err)
+	ctx := context.Background()
+
+	// 优先加载并初始化所有 Kernel 插件
+	kernelFiles := pfm.GetKernelPlugins()
+	for _, kf := range kernelFiles {
+		if err := km.LoadSingleKernel(kf, ctx); err != nil {
+			log.Errorf("Failed to load kernel [%s]: %v", kf.Name(), err)
 			continue
 		}
-	}
-
-	var initChans []<-chan error
-	for _, k := range app.kernelMgr.GetKernelPlugins() {
-		initChans = append(initChans, app.kernelMgr.InitSingleKernelAsync(k))
-	}
-
-	for _, ch := range initChans {
-		if err := <-ch; err != nil {
-			app.logger.Errorf("Kernel init failed: %v", err)
+		kernels := km.GetKernelPlugins()
+		if len(kernels) > 0 {
+			targetKernel := kernels[len(kernels)-1]
+			if initErr := <-km.InitSingleKernelAsync(targetKernel); initErr != nil {
+				log.Errorf("Failed to init kernel [%s]: %v", kf.Name(), initErr)
+			}
 		}
 	}
-	app.logger.Info("All kernels initialized successfully")
-	app.kernelMgr.StartAllLoops()
 
-	// 加载 Base/Active 插件
-	app.pluginMgr = plugin_manager.NewPluginManager(app.logger, app.kernelMgr, app.fileMgr, app.ebus)
-	app.logger.Info("Loading Base and Active plugins...")
-	allPlugins := append(app.fileMgr.GetBasePlugins(), app.fileMgr.GetActivePlugins()...)
-	for _, p := range allPlugins {
-		if err := app.pluginMgr.LoadPlugin(p); err != nil {
-			app.logger.Errorf("Load plugin %s failed: %v", p.Name(), err)
+	// 启动所有已初始化 Kernel 的事件循环
+	km.StartAllLoops()
+
+	// 自动加载 Base 和 Active 插件
+	allPlugins := append([]*plugin_manager.SinglePluginFile{}, pfm.GetBasePlugins()...)
+	allPlugins = append(allPlugins, pfm.GetActivePlugins()...)
+	for _, pf := range allPlugins {
+		if err := pm.LoadPlugin(pf); err != nil {
+			log.Errorf("Failed to auto-load plugin [%s]: %v", pf.Name(), err)
 		} else {
-			app.logger.Infof("Plugin %s loaded and registered", p.Name())
+			// 为成功加载的插件注册配置文件占位
+			_ = config.NewCfgManager().RegisterConfig(pf.Meta.ID)
+			log.Infof("Auto-loaded plugin [%s]", pf.Name())
 		}
 	}
-
-	// 启动 IPC
-	app.ipc = &IPC.CoreIpcInterface{}
-	app.ipc.Init(app.kernelMgr, app.fileMgr, app.pluginMgr, app.ebus, app.logger)
-	if err := app.ipc.CreatePipe(); err != nil {
-		return fmt.Errorf("failed to create IPC pipe: %w", err)
-	}
-
-	go app.ipc.ServeLoop()
-	app.logger.Info("IPC pipe server started, waiting for frontend connections...")
-
-	app.isRunning = true
-	return nil
 }
 
-// Run 阻塞运行直到上下文取消
-func (app *CoreApp) Run() {
-	<-app.ctx.Done()
-	app.Shutdown()
-}
+// waitForShutdown 阻塞主协程，直到收到操作系统的终止信号
+func waitForShutdown(km *plugin_manager.KernelManager, log *logger.Logger) {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-// Shutdown 关闭核心业务
-func (app *CoreApp) Shutdown() {
-	app.mu.Lock()
-	defer app.mu.Unlock()
+	sig := <-quit
+	log.Infof("Received shutdown signal: %v. Cleaning up...", sig)
 
-	if !app.isRunning {
-		return
-	}
-
-	app.logger.Info("Shutting down Core...")
-
-	// 关闭 IPC
-	if app.ipc != nil {
-		app.ipc.DestroyPipe()
-	}
-
-	// 关闭所有 Kernel
-	if app.kernelMgr != nil {
-		app.kernelMgr.ShutdownAll()
-	}
-
-	// 取消上下文
-	app.cancel()
-
-	app.logger.Info("Core shutdown complete.")
-	app.isRunning = false
-}
-
-// IsRunning 检查核心是否正在运行
-func (app *CoreApp) IsRunning() bool {
-	app.mu.Lock()
-	defer app.mu.Unlock()
-	return app.isRunning
+	// 关闭所有内核运行时环境
+	km.ShutdownAll()
+	log.Info("CuckooInterface Core shut down gracefully.")
 }

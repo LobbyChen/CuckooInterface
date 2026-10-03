@@ -1,0 +1,10 @@
+# CMake 构建产物
+build/
+cmake-build-*/
+
+# 编译中间文件
+*.o
+*.obj
+*.a
+*.lib
+*.exp

@@ -316,6 +316,7 @@ func (ipc *CoreIpcInterface) handleGetPlugins() (json.RawMessage, error) {
 
 	dtos := make([]PluginDto, 0, len(allFiles))
 	for _, f := range allFiles {
+		isKernel := f.Typo == constant.KERNEL
 		dto := PluginDto{
 			ID:          f.Meta.ID,
 			Name:        f.Meta.Name,
@@ -325,6 +326,10 @@ func (ipc *CoreIpcInterface) handleGetPlugins() (json.RawMessage, error) {
 			RuntimeType: f.Meta.RuntimeType,
 			IsEnabled:   enabledKernelIDs[f.Meta.ID],
 			IsLoaded:    false,
+		}
+		// Kernel 由 KernelManager 管理，已初始化即视为运行中
+		if isKernel && enabledKernelIDs[f.Meta.ID] {
+			dto.IsLoaded = true
 		}
 		if sum, ok := loadedSet[f.Meta.ID]; ok {
 			dto.IsLoaded = true
@@ -346,6 +351,10 @@ func (ipc *CoreIpcInterface) handleTogglePlugin(params json.RawMessage) (json.Ra
 	file := ipc.findPluginFile(p.ID)
 	if file == nil {
 		return nil, fmt.Errorf("plugin %s not found", p.ID)
+	}
+	// Kernel 插件由系统在启动时统一加载/初始化，不支持用户手动启停
+	if file.Typo == constant.KERNEL {
+		return nil, fmt.Errorf("kernel plugin %s is managed by system and cannot be toggled", p.ID)
 	}
 
 	if p.Enabled {
@@ -371,8 +380,10 @@ func (ipc *CoreIpcInterface) handleRemovePlugin(params json.RawMessage) (json.Ra
 		return nil, fmt.Errorf("plugin %s not found", p.ID)
 	}
 
-	// 先卸载（若已加载）
-	_ = ipc.pm.UnloadPlugin(file)
+	// Kernel 插件不由 PluginManager 管理，跳过 UnloadPlugin；仅删除文件
+	if file.Typo != constant.KERNEL {
+		_ = ipc.pm.UnloadPlugin(file)
+	}
 	// 从文件管理器移除
 	if err := ipc.pfm.RemovePlugin(p.ID); err != nil {
 		return nil, fmt.Errorf("remove plugin file failed: %w", err)
@@ -393,6 +404,9 @@ func (ipc *CoreIpcInterface) handleLoadPlugin(params json.RawMessage) (json.RawM
 	if file == nil {
 		return nil, fmt.Errorf("plugin %s not found", p.ID)
 	}
+	if file.Typo == constant.KERNEL {
+		return nil, fmt.Errorf("kernel plugin %s is managed by system and cannot be loaded manually", p.ID)
+	}
 	if err := ipc.pm.LoadPlugin(file); err != nil {
 		return nil, err
 	}
@@ -407,6 +421,9 @@ func (ipc *CoreIpcInterface) handleUnloadPlugin(params json.RawMessage) (json.Ra
 	file := ipc.findPluginFile(p.ID)
 	if file == nil {
 		return nil, fmt.Errorf("plugin %s not found", p.ID)
+	}
+	if file.Typo == constant.KERNEL {
+		return nil, fmt.Errorf("kernel plugin %s is managed by system and cannot be unloaded manually", p.ID)
 	}
 	if err := ipc.pm.UnloadPlugin(file); err != nil {
 		return nil, err

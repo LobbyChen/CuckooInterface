@@ -55,6 +55,11 @@ namespace CuckooInterfaceUI.Models
             _ => "未知"
         };
 
+        /// <summary>
+        /// 是否允许用户手动启停。Kernel 由系统统一管理，不支持手动 toggle。
+        /// </summary>
+        public bool CanToggle => Type != PluginType.Kernel;
+
         public string StatusText
         {
             get

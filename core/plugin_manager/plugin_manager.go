@@ -123,7 +123,7 @@ func (pm *PluginManager) UnloadPlugin(plugin *SinglePluginFile) error {
 	}
 	currentPlugin, ok := pm.loadedPlugins[plugin.Name()]
 	if !ok {
-		pm.logger.Error("plugin manager failed to unload plugin %s: not loaded", plugin.Name())
+		pm.logger.Errorf("plugin manager failed to unload plugin %s: not loaded", plugin.Name())
 		return fmt.Errorf("plugin %s is not loaded", plugin.Name())
 	}
 	// 先从 EventBus 注销该插件的所有监听器和事件，避免持有已失效的 C 函数指针

@@ -1,7 +1,6 @@
 package dameon
 
 import (
-	"CuckooInterface/core/constant"
 	"CuckooInterface/core/logger"
 	"CuckooInterface/core/utils"
 	"fmt"
@@ -12,35 +11,6 @@ import (
 
 // UI 可执行文件名，与守护进程位于同一目录
 const uiExecutableName = "CuckooInterfaceUI.exe"
-
-// startNormMode 以 normal 模式拉起 Core 主程序
-func startNormMode() error {
-	// 检查是否以 dameon 启动
-	if !isDaemon() {
-		return fmt.Errorf("Program is not started in dameon")
-	}
-
-	// 获取当前可执行文件目录
-	exeDir, err := utils.GetExecutableDir()
-	if err != nil {
-		return fmt.Errorf("failed to get executable dir: %v", err)
-	}
-
-	// 以 normal 模式重新启动自身（Core 进程）
-	selfPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get self executable path: %v", err)
-	}
-
-	cmd := exec.Command(selfPath, "-"+constant.ArgTag, constant.NormalModeArgData)
-	cmd.Dir = exeDir
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start normal mode: %v", err)
-	}
-
-	logger.GetLogger().Infof("Normal mode process started, PID: %d", cmd.Process.Pid)
-	return nil
-}
 
 // StartUI 拉起同目录下的 CuckooInterfaceUI.exe
 func StartUI() error {

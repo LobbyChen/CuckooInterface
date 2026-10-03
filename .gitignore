@@ -74,4 +74,4 @@ _pkginfo.txt
 # Other common ignores
 Thumbs.db
 .DS_Store
-
+*.zip

@@ -1,0 +1,9 @@
+{
+  "name": "MockKernel",
+  "id": "com.cuckoo.kernel.mock",
+  "type": 10,
+  "version": "1.0.0",
+  "description": "CuckooInterface 最小化 Mock 内核，用于验证插件加载与事件分发链路",
+  "runtime_type": "mock",
+  "tag": ["kernel", "mock", "debug"]
+}

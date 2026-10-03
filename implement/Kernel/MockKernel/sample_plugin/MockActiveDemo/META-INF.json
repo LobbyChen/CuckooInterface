@@ -1,0 +1,10 @@
+{
+  "name": "MockActiveDemo",
+  "id": "com.cuckoo.plugin.mock.active_demo",
+  "type": 30,
+  "version": "1.0.0",
+  "description": "Mock 运行时的 Active 插件示例，订阅 foundation.process.exited 事件",
+  "runtime_type": "mock",
+  "tag": ["demo", "mock"],
+  "listeners": ["foundation.process.exited", "foundation.file.changed"]
+}
