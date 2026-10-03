@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -442,6 +443,10 @@ func (ipc *CoreIpcInterface) handleInstallPlugin(params json.RawMessage) (json.R
 	}
 	if !utils.IsFileExist(p.Path) {
 		return nil, fmt.Errorf("file %s not exist", p.Path)
+	}
+	// 拷贝到插件类型文件夹，防止插件加载失败
+	if err := utils.CopyFile(p.Path, filepath.Join(constant.UserFolder, plugTypeToString(plugType), filepath.Base(p.Path))); err != nil {
+		return nil, err
 	}
 	if err := ipc.pfm.ExtractAndLoadExternalPlugin(p.Path, plugType); err != nil {
 		return nil, fmt.Errorf("install plugin failed: %w", err)
