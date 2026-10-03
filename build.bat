@@ -46,10 +46,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where gcc >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] CXX compiler not found in PATH.
+    exit /b 1
+)
+
+where g++ >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] CXX compiler not found in PATH.
+    exit /b 1
+)
+
 echo       Go:       OK
 echo       .NET:     OK
 echo       CMake:    OK
 echo       Python:   OK
+echo       CXX:      OK
 echo.
 
 REM ------------------------------------------------------------

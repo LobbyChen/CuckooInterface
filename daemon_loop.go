@@ -4,7 +4,7 @@ import (
 	"CuckooInterface/core/constant"
 	"CuckooInterface/core/logger"
 	"CuckooInterface/core/utils"
-	"CuckooInterface/dameon"
+	"CuckooInterface/daemon"
 	"context"
 	"fmt"
 	"os"
@@ -61,7 +61,7 @@ func RunDaemonLoop() {
 	}
 
 	// 初始化 Daemon IPC 命名管道
-	daemonIpc := &dameon.DaemonIpcInterface{}
+	daemonIpc := &daemon.DaemonIpcInterface{}
 	daemonIpc.Init(log, startCoreFunc, stopCoreFunc)
 
 	if err := daemonIpc.CreatePipe(); err != nil {
@@ -79,7 +79,7 @@ func RunDaemonLoop() {
 	}
 
 	// 初始拉起 UI 子进程
-	if err := dameon.StartUI(); err != nil {
+	if err := daemon.StartUI(); err != nil {
 		log.Errorf("Failed to start UI initially: %v", err)
 	}
 
@@ -101,7 +101,7 @@ func RunDaemonLoop() {
 
 	// 主线程运行托盘循环
 	systray.Run(func() {
-		dameon.SetupTray(trayCtx)
+		daemon.SetupTray(trayCtx)
 	}, func() {
 		// onExit 回调
 		log.Info("Tray onExit triggered, cleaning up child processes...")
@@ -114,7 +114,7 @@ func RunDaemonLoop() {
 		trayCancel()      // 通知托盘内部的监听协程退出
 
 		_ = stopCoreProcess(log)
-		_ = dameon.StopUI()
+		_ = daemon.StopUI()
 	})
 
 	log.Info("CuckooInterface Daemon shut down gracefully.")

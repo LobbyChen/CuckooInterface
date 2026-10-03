@@ -1,4 +1,4 @@
-package dameon
+package daemon
 
 import (
 	"CuckooInterface/core/logger"

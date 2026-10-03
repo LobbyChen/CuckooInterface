@@ -2,13 +2,13 @@ package main
 
 import (
 	"CuckooInterface/core/constant"
-	"CuckooInterface/dameon"
+	"CuckooInterface/daemon"
 	"fmt"
 	"os"
 )
 
 func main() {
-	startType := dameon.GetStartType()
+	startType := daemon.GetStartType()
 
 	switch *startType {
 	case constant.NormalModeArgData:
