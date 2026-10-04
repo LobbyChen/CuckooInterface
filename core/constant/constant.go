@@ -12,6 +12,28 @@ const (
 	BASE   PlugType = 0x2A
 )
 
+// String 返回插件类型的可读名称，用于日志与事件载荷
+func (t PlugType) String() string {
+	switch t {
+	case KERNEL:
+		return "kernel"
+	case ACTIVE:
+		return "active"
+	case BASE:
+		return "base"
+	default:
+		return "unknown"
+	}
+}
+
+// 内部框架事件名（foundation.* 命名空间，见 core/provider/events.md）
+const (
+	EventFrameworkStarted  string = "foundation.framework.started"
+	EventFrameworkStopping string = "foundation.framework.stopping"
+	EventPluginLoaded      string = "foundation.plugin.loaded"
+	EventPluginUnloaded    string = "foundation.plugin.unloaded"
+)
+
 // 项目所需的所有核心目录定义（面向代码阅读者的说明）：
 //   - logs:        系统运行日志
 //   - runtime:     Kernel 插件以及程序的运行时缓存

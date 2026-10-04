@@ -14,6 +14,8 @@ type pluginDescriptor struct {
 	typo   constantPkg.PlugType
 }
 
+type PluginEventHook func(loaded bool, meta plugins.PluginMetaData, typo constantPkg.PlugType)
+
 // PluginManager 上层插件管理器
 type PluginManager struct {
 	fileManager   *PluginFileManager
@@ -22,6 +24,26 @@ type PluginManager struct {
 	// Key: PluginID, Value: PluginHandle
 	loadedPlugins map[string]pluginDescriptor
 	logger        *logger.Logger
+	// pluginEventHook 可选的插件状态变化钩子
+	pluginEventHook PluginEventHook
+}
+
+// SetPluginEventHook 设置插件装载状态变化钩子，应在任何插件加载前调用。
+func (pm *PluginManager) SetPluginEventHook(hook PluginEventHook) {
+	pm.pluginEventHook = hook
+}
+
+// notifyPluginEvent 触发插件状态变化钩子，钩子 panic 不影响插件本身。
+func (pm *PluginManager) notifyPluginEvent(loaded bool, meta plugins.PluginMetaData, typo constantPkg.PlugType) {
+	if pm.pluginEventHook == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			pm.logger.Errorf("plugin event hook panicked: %v", r)
+		}
+	}()
+	pm.pluginEventHook(loaded, meta, typo)
 }
 
 // NewPluginManager 创建插件管理器实例
@@ -115,6 +137,7 @@ func (pm *PluginManager) LoadPlugin(plugin *SinglePluginFile) error {
 		kernel.UnloadPlugin(plug.Handle())
 		return regErr
 	}
+	pm.notifyPluginEvent(true, plugin.Meta, plugin.Typo)
 	return nil
 }
 func (pm *PluginManager) UnloadPlugin(plugin *SinglePluginFile) error {
@@ -133,6 +156,7 @@ func (pm *PluginManager) UnloadPlugin(plugin *SinglePluginFile) error {
 	currentPlugin.kernel.UnloadPlugin(currentPlugin.p.Handle())
 	// 移除 map
 	delete(pm.loadedPlugins, plugin.Name())
+	pm.notifyPluginEvent(false, plugin.Meta, plugin.Typo)
 	return nil
 }
 

@@ -227,9 +227,11 @@ func (km *KernelManager) StartAllLoops() {
 	km.lock.Unlock()
 	for _, k := range kernels {
 		func() {
-			if r := recover(); r != nil {
-				fmt.Printf("[KernelManager] Kernel loop panicked: %v\n", r)
-			}
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[KernelManager] Kernel loop panicked: %v\n", r)
+				}
+			}()
 			if err := k.StartLoop(); err != nil {
 				fmt.Printf("[KernelManager] Failed to start kernel loop: %v\n", err)
 			}

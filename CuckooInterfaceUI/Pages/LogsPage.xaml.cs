@@ -13,8 +13,12 @@ namespace CuckooInterfaceUI.Pages
 {
     public partial class LogsPage : Page
     {
+        private const int PageSize = 10;
+
         private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<LogEntry> _allLogs = new();
+        private List<LogEntry> _filteredLogs = new();
+        private int _currentPage = 1;
 
         public LogsPage()
         {
@@ -77,7 +81,7 @@ namespace CuckooInterfaceUI.Pages
                 levelFilter = level;
 
             var search = (SearchBox.Text ?? string.Empty).Trim();
-            var filtered = _allLogs.Where(log =>
+            _filteredLogs = _allLogs.Where(log =>
             {
                 if (levelFilter != null && log.LevelText != levelFilter) return false;
                 if (!string.IsNullOrWhiteSpace(search))
@@ -88,11 +92,53 @@ namespace CuckooInterfaceUI.Pages
                 return true;
             }).ToList();
 
-            LogsList.ItemsSource = filtered;
-            LogCountText.Text = $"{filtered.Count} 条";
+            _currentPage = 1;
+            RenderCurrentPage();
+        }
+
+        /// <summary>
+        /// 仅渲染当前页的日志，避免一次渲染过多条目。
+        /// </summary>
+        private void RenderCurrentPage()
+        {
+            var totalPages = Math.Max(1, (int)Math.Ceiling(_filteredLogs.Count / (double)PageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+
+            var skip = (_currentPage - 1) * PageSize;
+            var display = _filteredLogs.Skip(skip).Take(PageSize).ToList();
+
+            LogsList.ItemsSource = display;
+            LogCountText.Text = $"{_filteredLogs.Count} 条";
             UpdateEmptyState();
-            ExportLogsButton.IsEnabled = _backend.IsCoreConnected && filtered.Count > 0;
+            UpdateLogsPagination(totalPages);
+            ExportLogsButton.IsEnabled = _backend.IsCoreConnected && display.Count > 0;
             ClearLogsButton.IsEnabled = _backend.IsCoreConnected && _allLogs.Count > 0;
+        }
+
+        private void UpdateLogsPagination(int totalPages)
+        {
+            LogsPageIndicator.Text = $"第 {_currentPage} / {totalPages} 页";
+            LogsPrevPageButton.IsEnabled = _currentPage > 1;
+            LogsNextPageButton.IsEnabled = _currentPage < totalPages;
+        }
+
+        private void LogsPrevPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage > 1)
+            {
+                _currentPage--;
+                RenderCurrentPage();
+            }
+        }
+
+        private void LogsNextPage_Click(object sender, RoutedEventArgs e)
+        {
+            var totalPages = (int)Math.Ceiling(_filteredLogs.Count / (double)PageSize);
+            if (_currentPage < totalPages)
+            {
+                _currentPage++;
+                RenderCurrentPage();
+            }
         }
 
         private void UpdateEmptyState()
@@ -111,8 +157,11 @@ namespace CuckooInterfaceUI.Pages
         private void SetDisconnectedState()
         {
             _allLogs.Clear();
+            _filteredLogs.Clear();
+            _currentPage = 1;
             LogsList.ItemsSource = null;
             LogCountText.Text = "—";
+            UpdateLogsPagination(1);
             LogsEmptyState.Visibility = Visibility.Visible;
             LogsEmptyTitle.Text = "Core 未连接";
             LogsEmptyDetail.Text = "恢复连接后会自动刷新。";

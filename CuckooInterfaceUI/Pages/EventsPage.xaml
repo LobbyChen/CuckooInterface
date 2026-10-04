@@ -77,6 +77,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <ui:Card Grid.Row="0"
@@ -181,6 +182,35 @@
                                    Margin="0,5,0,0"
                                    HorizontalAlignment="Center" />
                     </StackPanel>
+
+                    <!-- 分页控件 -->
+                    <Grid Grid.Row="2"
+                          Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Center">
+                            <ui:Button x:Name="EventsPrevPageButton"
+                                       Content="上一页"
+                                       Appearance="Secondary"
+                                       Margin="0,0,8,0"
+                                       Click="EventsPrevPage_Click" />
+                            <TextBlock x:Name="EventsPageIndicator"
+                                       Text="第 1 / 1 页"
+                                       FontSize="13"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0" />
+                            <ui:Button x:Name="EventsNextPageButton"
+                                       Content="下一页"
+                                       Appearance="Secondary"
+                                       Click="EventsNextPage_Click" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Grid>
         </Grid>

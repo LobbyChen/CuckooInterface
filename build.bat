@@ -75,6 +75,8 @@ if exist "%BIN%" (
 mkdir "%BIN%"
 mkdir "%BIN%\user"
 mkdir "%BIN%\user\Kernel"
+echo       cleaning syso files
+del /s /q "*.syso"
 echo       bin/ cleaned and created.
 echo.
 

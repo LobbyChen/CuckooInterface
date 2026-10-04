@@ -39,6 +39,8 @@ namespace CuckooInterfaceUI
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // 启动时先按系统主题渲染，待后端连接后再应用保存值。
+            ThemeManager.ApplyTheme("system");
             RootNavigation.Navigate(typeof(Pages.HomePage));
             UpdateConnectionUi();
             _connectionTimer.Start();
@@ -114,6 +116,8 @@ namespace CuckooInterfaceUI
 
                 if (_hasConnectionSnapshot && (!_lastCoreConnected || !_lastDaemonConnected))
                     ShowToast("连接已恢复", "Core 和 Daemon 已重新连接。");
+
+                _ = ApplySavedAppearanceAsync();
             }
             else
             {
@@ -143,6 +147,28 @@ namespace CuckooInterfaceUI
             _hasConnectionSnapshot = true;
             _lastCoreConnected = coreConnected;
             _lastDaemonConnected = daemonConnected;
+        }
+
+        /// <summary>
+        /// 从后端读取已保存的外观设置并应用主题与强调色。
+        /// 仅在 Core 首次连接或从断开恢复连接时执行，避免每 4 秒重复拉取。
+        /// </summary>
+        private async Task ApplySavedAppearanceAsync()
+        {
+            if (!_backend.IsCoreConnected) return;
+
+            try
+            {
+                var values = await _backend.GetAppearanceSettingsAsync();
+                if (values.TryGetValue("theme", out var themeObj))
+                    ThemeManager.ApplyTheme(themeObj?.ToString() ?? "system");
+                if (values.TryGetValue("accentColor", out var accentObj))
+                    ThemeManager.ApplyAccent(accentObj?.ToString() ?? string.Empty);
+            }
+            catch
+            {
+                // 拉取失败时忽略，保持当前主题。
+            }
         }
 
         public async Task<bool> ShowConfirmDialogAsync(string title, object content, string primaryText, string closeText = "取消", bool danger = false)

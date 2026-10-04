@@ -60,6 +60,11 @@ namespace CuckooInterfaceUI.Models
         /// </summary>
         public bool CanToggle => Type != PluginType.Kernel;
 
+        /// <summary>
+        /// 是否允许卸载。Kernel 由系统统一管理，不允许卸载。
+        /// </summary>
+        public bool CanUninstall => Type != PluginType.Kernel;
+
         public string StatusText
         {
             get

@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/getlantern/systray v1.2.2
+	github.com/shirou/gopsutil v3.21.11+incompatible
 	go.uber.org/zap v1.28.0
 	golang.org/x/sys v0.1.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -17,8 +18,10 @@ require (
 	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
 	github.com/getlantern/hidden v0.0.0-20190325191715-f02dbb02be55 // indirect
 	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 )

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,8 +12,12 @@ namespace CuckooInterfaceUI.Pages
 {
     public partial class EventsPage : Page
     {
+        private const int PageSize = 10;
+
         private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<EventOption> _eventOptions = new();
+        private List<EventRecord> _allEvents = new();
+        private int _currentPage = 1;
 
         public EventsPage()
         {
@@ -66,8 +71,9 @@ namespace CuckooInterfaceUI.Pages
                 var registered = await registeredTask;
                 _eventOptions = await optionsTask;
 
-                RecentEventsList.ItemsSource = recent;
-                UpdateRecentEmptyState(false);
+                _allEvents = recent;
+                _currentPage = 1;
+                RenderCurrentPage();
             }
             catch (Exception ex)
             {
@@ -103,10 +109,55 @@ namespace CuckooInterfaceUI.Pages
                 : "当前没有可显示的事件。";
         }
 
+        /// <summary>
+        /// 仅渲染当前页的事件，避免一次渲染过多条目。
+        /// </summary>
+        private void RenderCurrentPage()
+        {
+            var totalPages = Math.Max(1, (int)Math.Ceiling(_allEvents.Count / (double)PageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+
+            var skip = (_currentPage - 1) * PageSize;
+            var pageItems = _allEvents.Skip(skip).Take(PageSize).ToList();
+
+            RecentEventsList.ItemsSource = pageItems;
+            UpdateRecentEmptyState(false);
+            UpdateEventsPagination(totalPages);
+        }
+
+        private void UpdateEventsPagination(int totalPages)
+        {
+            EventsPageIndicator.Text = $"第 {_currentPage} / {totalPages} 页";
+            EventsPrevPageButton.IsEnabled = _currentPage > 1;
+            EventsNextPageButton.IsEnabled = _currentPage < totalPages;
+        }
+
+        private void EventsPrevPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage > 1)
+            {
+                _currentPage--;
+                RenderCurrentPage();
+            }
+        }
+
+        private void EventsNextPage_Click(object sender, RoutedEventArgs e)
+        {
+            var totalPages = (int)Math.Ceiling(_allEvents.Count / (double)PageSize);
+            if (_currentPage < totalPages)
+            {
+                _currentPage++;
+                RenderCurrentPage();
+            }
+        }
+
         private void SetDisconnectedState()
         {
+            _allEvents.Clear();
+            _currentPage = 1;
             RecentEventsList.ItemsSource = null;
             UpdateRecentEmptyState(true);
+            UpdateEventsPagination(1);
             _eventOptions.Clear();
 
             RefreshEventsButton.IsEnabled = false;

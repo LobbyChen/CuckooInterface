@@ -187,6 +187,10 @@ namespace CuckooInterfaceUI.Pages
                 return;
             }
 
+            // Kernel 插件由系统统一管理，不允许卸载。
+            if (plugin.Type == PluginType.Kernel)
+                return;
+
             if (Window.GetWindow(this) is not MainWindow window)
                 return;
 

@@ -7,6 +7,9 @@ import (
 	IPC "CuckooInterface/core/ipc"
 	"CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
+	"CuckooInterface/core/provider"
+	"CuckooInterface/core/provider/foundation"
+	"CuckooInterface/core/provider/system/disk"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"context"
@@ -49,10 +52,18 @@ func RunMainLoop() {
 
 	// 初始化事件总线
 	eventBus := event.NewEventBus()
+	// 构造内部事件管理器
+	internalEventBus := event.NewInternalEventManager(eventBus, log)
 
-	// 构造 Host API：同时注入到 CGO 桥接层（全局）和 KernelManager。
-	// 必须使用同一实例，因为 KernelManager 会在 InitSingleKernelAsync 中
-	// 包装 IntoLoopReport，CGO 侧的 go_into_loop_report_gateway 读取的也是该全局实例。
+	// 注册内部事件源：framework 生命周期事件由外部触发，这里先持有引用
+	frameworkMonitor := &foundation.FrameworkMonitor{}
+	registerInternalEvent(internalEventBus, frameworkMonitor, log)
+	// 磁盘插拔监控（system.disk.*）
+	registerInternalEvent(internalEventBus, &disk.DiskMonitor{}, log)
+	// TODO 注入更多events
+	// 启动内部事件
+	internalEventBus.Start()
+	// 构造 Host API
 	hostAPI := &plugins.HostAPI{
 		EmitEvent: func(eventName, payload string) {
 			eventBus.Emit(eventName, payload)
@@ -84,8 +95,16 @@ func RunMainLoop() {
 	km.InjectPluginFileManager(pfm)
 	km.InjectHostAPI(hostAPI)
 	pm := plugin_manager.NewPluginManager(log, &km, pfm, eventBus)
+	// 插件装载状态变化时广播 foundation.plugin.loaded / unloaded
+	pm.SetPluginEventHook(func(loaded bool, meta plugins.PluginMetaData, typo constant.PlugType) {
+		if loaded {
+			frameworkMonitor.NotifyPluginLoaded(meta.ID, meta.Name, typo)
+		} else {
+			frameworkMonitor.NotifyPluginUnloaded(meta.ID, meta.Name, typo)
+		}
+	})
 
-	// 8. 创建并启动 IPC 命名管道服务
+	// 创建并启动 IPC 命名管道服务
 	ipcBridge := &IPC.CoreIpcInterface{}
 	ipcBridge.Init(&km, pfm, pm, eventBus, log)
 
@@ -99,14 +118,22 @@ func RunMainLoop() {
 	log.Infof("Core IPC listening on pipe: %s", constant.CoreNamePipe)
 
 	// 扫描、解压并加载插件
-	loadPlugins(pfm, &km, pm, log)
+	loadPlugins(pfm, &km, pm, log, cfgManager)
 
 	// 阻塞等待退出信号或崩溃
-	waitForShutdown(&km, log)
+	waitForShutdown(&km, log, internalEventBus)
+}
+
+// registerInternalEvent 注册一个内部事件源，并把注册过程中的错误记入日志。
+// 单个事件注册失败不影响其他事件，因此这里只记录不中断。
+func registerInternalEvent(iem *event.InternalEventManager, ev provider.InternalEvent, log *logger.Logger) {
+	for _, err := range iem.AddInternalEvent(ev) {
+		log.Errorf("Failed to register internal event: %v", err)
+	}
 }
 
 // loadPlugins 负责从磁盘扫描、解压并加载所有类型的插件
-func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.KernelManager, pm *plugin_manager.PluginManager, log *logger.Logger) {
+func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.KernelManager, pm *plugin_manager.PluginManager, log *logger.Logger, cfgManager *config.CfgManager) {
 	userDir := utils.GetFolderPath(constant.UserFolder)
 
 	// 解压用户目录下的所有插件到 runtime/plugins 目录
@@ -154,15 +181,19 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 		if err := pm.LoadPlugin(pf); err != nil {
 			log.Errorf("Failed to auto-load plugin [%s]: %v", pf.Name(), err)
 		} else {
-			// 为成功加载的插件注册配置文件占位
-			_ = config.NewCfgManager().RegisterConfig(pf.Meta.ID)
+			// 为成功加载的插件注册配置文件占位。
+			// 必须复用已设置 CfgPath 的 cfgManager，否则配置会落盘到当前工作目录
+			// 且注册结果随临时 manager 一起丢失。
+			if err := cfgManager.RegisterConfig(pf.Meta.ID); err != nil {
+				log.Warnf("Failed to register config for plugin [%s]: %v", pf.Name(), err)
+			}
 			log.Infof("Auto-loaded plugin [%s]", pf.Name())
 		}
 	}
 }
 
 // waitForShutdown 阻塞主协程，直到收到操作系统的终止信号
-func waitForShutdown(km *plugin_manager.KernelManager, log *logger.Logger) {
+func waitForShutdown(km *plugin_manager.KernelManager, log *logger.Logger, iem *event.InternalEventManager) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -171,5 +202,7 @@ func waitForShutdown(km *plugin_manager.KernelManager, log *logger.Logger) {
 
 	// 关闭所有内核运行时环境
 	km.ShutdownAll()
+	// 关闭内部事件
+	iem.Stop()
 	log.Info("CuckooInterface Core shut down gracefully.")
 }

@@ -555,6 +555,13 @@ namespace CuckooInterfaceUI.Pages
                 SaveSettingsButton.IsEnabled = false;
                 var ok = await _backend.SaveSettingsAsync(values);
                 if (!ok) throw new InvalidOperationException("Core 未确认设置保存成功。");
+
+                // 实时应用外观设置，无需重启。
+                if (values.TryGetValue("theme", out var themeObj))
+                    ThemeManager.ApplyTheme(themeObj?.ToString() ?? "system");
+                if (values.TryGetValue("accentColor", out var accentObj))
+                    ThemeManager.ApplyAccent(accentObj?.ToString() ?? string.Empty);
+
                 SetPendingChanges(false);
                 (Window.GetWindow(this) as MainWindow)?.ShowToast("设置已保存", "修改已经提交到 Core。");
             }

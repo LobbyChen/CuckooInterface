@@ -149,6 +149,7 @@
                                                        Appearance="Danger"
                                                        Padding="6"
                                                        Tag="{Binding}"
+                                                       IsEnabled="{Binding CanUninstall}"
                                                        Click="DeletePlugin_Click" />
                                         </StackPanel>
 

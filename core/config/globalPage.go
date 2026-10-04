@@ -92,29 +92,6 @@ func BuildSettingsPanel() SettingPanel {
 						},
 					},
 					{
-						Key:  "language",
-						Name: "语言",
-						Settings: []Setting{
-							NewSetting(
-								SettingDefinition{
-									Key:                "language",
-									Name:               "界面显示语言",
-									Description:        "选择应用程序的显示语言",
-									DisplayName:        true,
-									DisplayDescription: true,
-									Editor: SelectEditor{
-										Options: []TextOption{
-											{Value: "zh-CN", Text: "简体中文"},
-											{Value: "en-US", Text: "English"},
-										},
-									},
-								},
-								"zh-CN",
-								"zh-CN",
-							),
-						},
-					},
-					{
 						Key:  "instance",
 						Name: "单实例",
 						Settings: []Setting{

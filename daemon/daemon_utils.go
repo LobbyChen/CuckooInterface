@@ -16,7 +16,7 @@ const uiExecutableName = "CuckooInterfaceUI.exe"
 func StartUI() error {
 	sm := GetStatusManager()
 
-	// 防重复启动：如果 UI 已在运行则直接返回
+	// 防重复启动
 	if sm.IsUIRunning() {
 		logger.GetLogger().Info("UI is already running, skip")
 		return nil
