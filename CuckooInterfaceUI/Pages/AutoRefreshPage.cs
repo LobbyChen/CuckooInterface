@@ -15,7 +15,7 @@ namespace CuckooInterfaceUI.Pages
     public abstract class AutoRefreshPage : Page
     {
         /// <summary>自动刷新间隔。</summary>
-        public static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(2);
+        public static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
 
         private readonly DispatcherTimer _refreshTimer;
         private bool _isRefreshing;
@@ -52,7 +52,6 @@ namespace CuckooInterfaceUI.Pages
 
         /// <summary>
         /// 自动刷新回调：页面可见时每 2 秒调用一次。
-        /// 页面实现中应检查后端连接状态并自行处理断连展示。
         /// </summary>
         protected abstract Task OnAutoRefreshAsync();
     }

@@ -23,7 +23,7 @@ namespace CuckooInterfaceUI.Pages
             Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
 
-        // 每 2 秒自动刷新插件列表（静默模式：保留当前选中项）
+        // 每 2 秒自动刷新插件列表
         protected override Task OnAutoRefreshAsync() => LoadPluginsFromBackendAsync(interactive: false);
 
         private async void ConfigPage_Loaded(object sender, RoutedEventArgs e)
