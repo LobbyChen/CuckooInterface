@@ -263,9 +263,8 @@ func (ipc *CoreIpcInterface) handleGetOverview() (json.RawMessage, error) {
 	}
 	active = len(loaded)
 
-	// 事件统计
-	events := ipc.ebus.GetAllBufferedEvent()
-	errorCount := 0 // 事件总线当前无级别概念，暂为 0
+	// 事件统计：今日事件数读取 EventBus 维护的计数变量
+	errorCount := 0
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -278,7 +277,7 @@ func (ipc *CoreIpcInterface) handleGetOverview() (json.RawMessage, error) {
 		ActivePlugins:   active,
 		TotalKernels:    kernels,
 		ActiveKernels:   activeKernels,
-		EventCountToday: len(events),
+		EventCountToday: int(ipc.ebus.GetTodayEventCount()),
 		ErrorCountToday: errorCount,
 		CpuUsage:        0, // 暂不采集 CPU
 		MemoryUsageMB:   memMB,

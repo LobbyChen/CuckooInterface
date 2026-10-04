@@ -12,7 +12,7 @@ using Wpf.Ui.Controls;
 
 namespace CuckooInterfaceUI.Pages
 {
-    public partial class PluginsPage : Page
+    public partial class PluginsPage : AutoRefreshPage
     {
         private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<PluginInfo> _allPlugins = new();
@@ -23,6 +23,9 @@ namespace CuckooInterfaceUI.Pages
             Loaded += PluginsPage_Loaded;
             Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
+
+        // 每 2 秒自动刷新插件列表（静默模式）
+        protected override Task OnAutoRefreshAsync() => LoadPluginsFromBackendAsync(interactive: false);
 
         private async void PluginsPage_Loaded(object sender, RoutedEventArgs e)
         {
@@ -45,7 +48,12 @@ namespace CuckooInterfaceUI.Pages
             });
         }
 
-        private async Task LoadPluginsFromBackendAsync()
+        /// <summary>
+        /// 加载插件列表。
+        /// interactive=true：用户点击或连接恢复，给出按钮禁用与错误提示；
+        /// interactive=false：2s 自动刷新的静默模式，数据未变化时完全不重建 UI。
+        /// </summary>
+        private async Task LoadPluginsFromBackendAsync(bool interactive = true)
         {
             if (!_backend.IsCoreConnected)
             {
@@ -55,10 +63,19 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                RefreshPluginsButton.IsEnabled = false;
-                InstallPluginButton.IsEnabled = false;
+                if (interactive)
+                {
+                    RefreshPluginsButton.IsEnabled = false;
+                    InstallPluginButton.IsEnabled = false;
+                }
 
-                _allPlugins = await _backend.GetPluginsAsync();
+                var plugins = await _backend.GetPluginsAsync();
+
+                // 数据未变化时跳过重建，避免自动刷新打断滚动与筛选结果
+                if (PluginsSignature(plugins) == PluginsSignature(_allPlugins))
+                    return;
+
+                _allPlugins = plugins;
                 ApplyFilter();
             }
             catch (Exception ex)
@@ -66,7 +83,8 @@ namespace CuckooInterfaceUI.Pages
                 if (ex is BackendConnectionException)
                     SetDisconnectedState();
 
-                await ShowBackendErrorAsync("加载插件失败", ex);
+                if (interactive)
+                    await ShowBackendErrorAsync("加载插件失败", ex);
             }
             finally
             {
@@ -75,6 +93,10 @@ namespace CuckooInterfaceUI.Pages
                 InstallPluginButton.IsEnabled = connected;
             }
         }
+
+        /// <summary>插件列表状态签名，用于判断自动刷新时数据是否真的变化。</summary>
+        private static string PluginsSignature(List<PluginInfo> plugins) =>
+            string.Join("|", plugins.Select(p => $"{p.Id}:{p.IsEnabled}:{p.IsLoaded}"));
 
         private void ApplyFilter()
         {

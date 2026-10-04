@@ -11,7 +11,7 @@ using CuckooInterfaceUI.Services;
 
 namespace CuckooInterfaceUI.Pages
 {
-    public partial class LogsPage : Page
+    public partial class LogsPage : AutoRefreshPage
     {
         private const int PageSize = 10;
 
@@ -26,6 +26,9 @@ namespace CuckooInterfaceUI.Pages
             Loaded += LogsPage_Loaded;
             Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
+
+        // 每 2 秒自动刷新日志（静默模式：保留页码，不打断浏览）
+        protected override Task OnAutoRefreshAsync() => LoadLogsFromBackendAsync(interactive: false);
 
         private async void LogsPage_Loaded(object sender, RoutedEventArgs e)
         {
@@ -44,7 +47,12 @@ namespace CuckooInterfaceUI.Pages
             });
         }
 
-        private async Task LoadLogsFromBackendAsync()
+        /// <summary>
+        /// 加载日志数据。
+        /// interactive=true：用户点击或连接恢复，回到首页并给出完整反馈；
+        /// interactive=false：2s 自动刷新的静默模式，保留页码，数据未变化时不重渲染。
+        /// </summary>
+        private async Task LoadLogsFromBackendAsync(bool interactive = true)
         {
             if (!_backend.IsCoreConnected)
             {
@@ -54,14 +62,23 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                RefreshLogsButton.IsEnabled = false;
-                _allLogs = await _backend.GetLogsAsync();
-                ApplyFilter();
+                if (interactive)
+                    RefreshLogsButton.IsEnabled = false;
+
+                var logs = await _backend.GetLogsAsync();
+
+                // 数据未变化时跳过重建，避免自动刷新打断滚动与页码
+                if (LogsSignature(logs) == LogsSignature(_allLogs))
+                    return;
+
+                _allLogs = logs;
+                ApplyFilter(resetPage: interactive);
             }
             catch (Exception ex)
             {
                 if (ex is BackendConnectionException) SetDisconnectedState();
-                await ShowBackendErrorAsync("加载日志失败", ex);
+                if (interactive)
+                    await ShowBackendErrorAsync("加载日志失败", ex);
             }
             finally
             {
@@ -72,7 +89,18 @@ namespace CuckooInterfaceUI.Pages
             }
         }
 
-        private void ApplyFilter()
+        /// <summary>日志列表状态签名：条数 + 首末条时间与消息，用于判断自动刷新时数据是否真的变化。</summary>
+        private static string LogsSignature(List<LogEntry> logs)
+        {
+            if (logs.Count == 0)
+                return "0";
+
+            var first = logs[0];
+            var last = logs[logs.Count - 1];
+            return $"{logs.Count}:{first.Timestamp:O}:{first.Message}:{last.Timestamp:O}:{last.Message}";
+        }
+
+        private void ApplyFilter(bool resetPage = true)
         {
             if (LogsList == null || SearchBox == null || LevelFilter == null) return;
 
@@ -92,7 +120,9 @@ namespace CuckooInterfaceUI.Pages
                 return true;
             }).ToList();
 
-            _currentPage = 1;
+            // 自动刷新时保留当前页码，用户手动改筛选或点击刷新时回到首页
+            if (resetPage)
+                _currentPage = 1;
             RenderCurrentPage();
         }
 

@@ -1,9 +1,11 @@
 package config
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
-// 外观设置为前端固定页面，其值由后端单独存储（不在 SettingPanel 结构中）。
-// 与前端约定的 key：theme / accentColor / fontScale
+// 外观设置为前端固定页面，其值由后端单独存储
 var (
 	appearanceMu     sync.RWMutex
 	appearanceValues = map[string]interface{}{
@@ -34,7 +36,7 @@ func GetAppearanceSettings() map[string]interface{} {
 	return out
 }
 
-// SaveSettings 按 key 更新设置值。
+// SaveSettings 按 key 更新设置值
 func SaveSettings(values map[string]interface{}) {
 	for k, v := range values {
 		if _, ok := appearanceKeys[k]; ok {
@@ -48,6 +50,76 @@ func SaveSettings(values map[string]interface{}) {
 		settingValues[k] = v
 		settingsMu.Unlock()
 	}
+
+	// 同步进全局 CoreConfig 并写回 configs/core.json
+	syncSettingsToCoreConfig(values)
+	if err := SaveCoreConfig(); err != nil {
+		fmt.Printf("Warning: failed to persist core config: %v\n", err)
+	}
+}
+
+// syncSettingsToCoreConfig 把本次更新的设置值同步进全局 CoreConfig 结构体。
+// LoadCoreConfig 之前（coreCfg 为 nil）不做任何事。
+func syncSettingsToCoreConfig(values map[string]interface{}) {
+	coreCfgMu.Lock()
+	defer coreCfgMu.Unlock()
+	if coreCfg == nil {
+		return
+	}
+	for k, v := range values {
+		switch k {
+		case "autoStart":
+			coreCfg.AutoStart = toBool(v, coreCfg.AutoStart)
+		case "singleInstance":
+			coreCfg.SingleInstance = toBool(v, coreCfg.SingleInstance)
+		case "logLevel":
+			coreCfg.LogLevel = toString(v, coreCfg.LogLevel)
+		case "logMaxSize":
+			coreCfg.LogMaxSize = toFloat(v, coreCfg.LogMaxSize)
+		case "logCompress":
+			coreCfg.LogCompress = toBool(v, coreCfg.LogCompress)
+		case "autoLoadPlugins":
+			coreCfg.AutoLoadPlugins = toBool(v, coreCfg.AutoLoadPlugins)
+		case "continueOnError":
+			coreCfg.ContinueOnError = toBool(v, coreCfg.ContinueOnError)
+		case "pluginDir":
+			coreCfg.PluginDir = toString(v, coreCfg.PluginDir)
+		case "theme":
+			coreCfg.Appearance.Theme = toString(v, coreCfg.Appearance.Theme)
+		case "accentColor":
+			coreCfg.Appearance.AccentColor = toString(v, coreCfg.Appearance.AccentColor)
+		case "fontScale":
+			coreCfg.Appearance.FontScale = toFloat(v, coreCfg.Appearance.FontScale)
+		}
+	}
+}
+
+func toBool(v interface{}, fallback bool) bool {
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return fallback
+}
+
+func toString(v interface{}, fallback string) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fallback
+}
+
+func toFloat(v interface{}, fallback float64) float64 {
+	switch f := v.(type) {
+	case float64:
+		return f
+	case float32:
+		return float64(f)
+	case int:
+		return float64(f)
+	case int64:
+		return float64(f)
+	}
+	return fallback
 }
 
 // setSettingValue 在 SettingPanel 中递归查找并更新指定 key 的 Setting 值。

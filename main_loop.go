@@ -50,12 +50,18 @@ func RunMainLoop() {
 		log.Warnf("Failed to load existing configs, starting with empty config state: %v", err)
 	}
 
+	// 读取 Core 全局配置，并同步到设置内存值
+	if err := config.LoadCoreConfig(cfgPath); err != nil {
+		log.Warnf("Failed to load core config, falling back to defaults: %v", err)
+	}
+	_ = config.GetCoreConfig() //TODO 使用读取的全局配置
+
 	// 初始化事件总线
 	eventBus := event.NewEventBus()
 	// 构造内部事件管理器
 	internalEventBus := event.NewInternalEventManager(eventBus, log)
 
-	// 注册内部事件源：framework 生命周期事件由外部触发，这里先持有引用
+	// 注册内部事件源
 	frameworkMonitor := &foundation.FrameworkMonitor{}
 	registerInternalEvent(internalEventBus, frameworkMonitor, log)
 	// 磁盘插拔监控（system.disk.*）

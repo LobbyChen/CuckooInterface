@@ -1,7 +1,8 @@
-<Page x:Class="CuckooInterfaceUI.Pages.HomePage"
+<pages:AutoRefreshPage x:Class="CuckooInterfaceUI.Pages.HomePage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:pages="clr-namespace:CuckooInterfaceUI.Pages"
       Title="HomePage">
     <Grid Margin="28,24,28,20"
           TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
@@ -36,6 +37,12 @@
                            Appearance="Secondary"
                            Margin="0,0,10,0"
                            Click="RefreshHome_Click" />
+
+                <ui:Button x:Name="StartServiceButton"
+                           Content="启动 Core"
+                           Appearance="Success"
+                           Margin="0,0,10,0"
+                           Click="StartService_Click" />
 
                 <ui:Button x:Name="RestartServiceButton"
                            Content="重启 Core"
@@ -169,26 +176,6 @@
                                        Margin="0,4,0,0" />
                         </StackPanel>
                     </Grid>
-
-                    <Separator Margin="0,0,0,14" />
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Text="内核"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-
-                        <TextBlock x:Name="KernelNames"
-                                   Grid.Column="1"
-                                   Text="—"
-                                   TextAlignment="Right"
-                                   TextTrimming="CharacterEllipsis"
-                                   Margin="20,0,0,0" />
-                    </Grid>
                 </StackPanel>
             </ui:Card>
 
@@ -285,4 +272,4 @@
             </ui:Card>
         </Grid>
     </Grid>
-</Page>
+</pages:AutoRefreshPage>

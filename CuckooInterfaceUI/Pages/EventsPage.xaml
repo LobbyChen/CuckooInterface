@@ -1,7 +1,8 @@
-<Page x:Class="CuckooInterfaceUI.Pages.EventsPage"
+<pages:AutoRefreshPage x:Class="CuckooInterfaceUI.Pages.EventsPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:pages="clr-namespace:CuckooInterfaceUI.Pages"
       Title="EventsPage">
 
     <Page.Resources>
@@ -215,5 +216,5 @@
             </Grid>
         </Grid>
     </Grid>
-</Page>
+</pages:AutoRefreshPage>
 

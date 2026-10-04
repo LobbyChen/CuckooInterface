@@ -10,7 +10,7 @@ using Wpf.Ui.Controls;
 
 namespace CuckooInterfaceUI.Pages
 {
-    public partial class EventsPage : Page
+    public partial class EventsPage : AutoRefreshPage
     {
         private const int PageSize = 10;
 
@@ -25,6 +25,9 @@ namespace CuckooInterfaceUI.Pages
             Loaded += EventsPage_Loaded;
             Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
+
+        // 每 2 秒自动刷新事件数据（静默模式：保留页码，不打断翻页）
+        protected override Task OnAutoRefreshAsync() => LoadDataAsync(interactive: false);
 
         private async void EventsPage_Loaded(object sender, RoutedEventArgs e)
         {
@@ -47,7 +50,12 @@ namespace CuckooInterfaceUI.Pages
             });
         }
 
-        private async Task LoadDataAsync()
+        /// <summary>
+        /// 加载事件数据。
+        /// interactive=true：用户点击或连接恢复，重置到首页并给出完整反馈；
+        /// interactive=false：2s 自动刷新的静默模式，保留当前页码，数据未变化时不重渲染。
+        /// </summary>
+        private async Task LoadDataAsync(bool interactive = true)
         {
             if (!_backend.IsCoreConnected)
             {
@@ -57,9 +65,12 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                RefreshEventsButton.IsEnabled = false;
-                OpenRegisteredButton.IsEnabled = false;
-                OpenPublishButton.IsEnabled = false;
+                if (interactive)
+                {
+                    RefreshEventsButton.IsEnabled = false;
+                    OpenRegisteredButton.IsEnabled = false;
+                    OpenPublishButton.IsEnabled = false;
+                }
 
                 var recentTask = _backend.GetRecentEventsAsync();
                 var registeredTask = _backend.GetRegisteredEventsAsync();
@@ -71,16 +82,23 @@ namespace CuckooInterfaceUI.Pages
                 var registered = await registeredTask;
                 _eventOptions = await optionsTask;
 
+                // 数据未变化时跳过重渲染，避免自动刷新打断分页与滚动位置
+                var unchanged = EventsUnchanged(recent);
+
                 _allEvents = recent;
-                _currentPage = 1;
-                RenderCurrentPage();
+                if (interactive)
+                    _currentPage = 1;
+
+                if (interactive || !unchanged)
+                    RenderCurrentPage();
             }
             catch (Exception ex)
             {
                 if (ex is BackendConnectionException)
                     SetDisconnectedState();
 
-                await ShowBackendErrorAsync("加载事件失败", ex);
+                if (interactive)
+                    await ShowBackendErrorAsync("加载事件失败", ex);
             }
             finally
             {
@@ -89,6 +107,24 @@ namespace CuckooInterfaceUI.Pages
                 OpenRegisteredButton.IsEnabled = connected;
                 OpenPublishButton.IsEnabled = connected;
             }
+        }
+
+        /// <summary>
+        /// 判断新拉取的事件列表与当前列表是否等价：条数一致且最新一条（列表按新→旧排列）
+        /// 的时间戳与事件名相同。用于避免自动刷新时的无效重渲染。
+        /// </summary>
+        private bool EventsUnchanged(List<EventRecord> recent)
+        {
+            if (recent.Count != _allEvents.Count)
+                return false;
+            if (recent.Count == 0 || _allEvents.Count == 0)
+                return false;
+
+            var latest = recent[0];
+            var current = _allEvents[0];
+            return latest.Timestamp == current.Timestamp &&
+                   latest.EventName == current.EventName &&
+                   latest.Payload == current.Payload;
         }
 
         private async void RefreshEvents_Click(object sender, RoutedEventArgs e)

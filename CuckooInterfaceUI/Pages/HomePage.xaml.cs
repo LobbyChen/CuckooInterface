@@ -1,14 +1,14 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using CuckooInterfaceUI.Models;
 using CuckooInterfaceUI.Services;
 
 namespace CuckooInterfaceUI.Pages
 {
-    public partial class HomePage : Page
+    public partial class HomePage : AutoRefreshPage
     {
         private readonly CoreBackend _backend = CoreBackend.Instance;
         private bool _hasOverview;
@@ -19,6 +19,9 @@ namespace CuckooInterfaceUI.Pages
             Loaded += HomePage_Loaded;
             Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
+
+        // 每 2 秒自动刷新概览数据（静默模式：不闪按钮、不弹错误提示）
+        protected override Task OnAutoRefreshAsync() => LoadOverviewFromBackendAsync(interactive: false);
 
         private async void HomePage_Loaded(object sender, RoutedEventArgs e)
         {
@@ -39,7 +42,12 @@ namespace CuckooInterfaceUI.Pages
             });
         }
 
-        private async System.Threading.Tasks.Task LoadOverviewFromBackendAsync()
+        /// <summary>
+        /// 加载概览数据。
+        /// interactive=true：用户点击或连接恢复，反馈完整（按钮禁用、加载态、错误提示）；
+        /// interactive=false：2s 自动刷新的静默模式，不打扰界面。
+        /// </summary>
+        private async Task LoadOverviewFromBackendAsync(bool interactive = true)
         {
             if (!_backend.IsCoreConnected)
             {
@@ -49,13 +57,16 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                RefreshHomeButton.IsEnabled = false;
-                SetLoadingStateIfNeeded();
+                if (interactive)
+                {
+                    RefreshHomeButton.IsEnabled = false;
+                    SetLoadingStateIfNeeded();
+                }
 
                 var overviewTask = _backend.GetOverviewAsync();
                 var pluginsTask = _backend.GetPluginsAsync();
                 var eventsTask = _backend.GetRecentEventsAsync();
-                await System.Threading.Tasks.Task.WhenAll(overviewTask, pluginsTask, eventsTask);
+                await Task.WhenAll(overviewTask, pluginsTask, eventsTask);
 
                 var overview = await overviewTask;
                 var plugins = await pluginsTask;
@@ -71,9 +82,6 @@ namespace CuckooInterfaceUI.Pages
                 ErrorCountText.Text = overview.ErrorCountToday.ToString();
                 UptimeText.Text = string.IsNullOrWhiteSpace(overview.Uptime) ? "—" : overview.Uptime;
 
-                var kernelNames = plugins.Where(p => p.Type == PluginType.Kernel).Select(p => p.Name).ToList();
-                KernelNames.Text = kernelNames.Count == 0 ? "无" : string.Join(" · ", kernelNames);
-
                 RecentEventsList.ItemsSource = recentEvents.Take(5).ToList();
                 UpdateRecentEventsEmptyState(false);
                 _hasOverview = true;
@@ -82,7 +90,8 @@ namespace CuckooInterfaceUI.Pages
             {
                 if (ex is BackendConnectionException)
                     SetDisconnectedState();
-                await ShowBackendErrorAsync("加载概览失败", ex);
+                if (interactive)
+                    await ShowBackendErrorAsync("加载概览失败", ex);
             }
             finally
             {
@@ -120,10 +129,11 @@ namespace CuckooInterfaceUI.Pages
             EventCountText.Text = "—";
             ErrorCountText.Text = "—";
             UptimeText.Text = "—";
-            KernelNames.Text = "后端未连接";
             RecentEventsList.ItemsSource = null;
             UpdateRecentEventsEmptyState(true);
-            SetActionButtonsEnabled(false);
+            // Core 离线时按 Daemon 实际连接状态恢复操作按钮，
+            // 保证「启动 Core」在 Core 停止后仍然可用
+            SetActionButtonsEnabled(_backend.IsDaemonConnected);
         }        private void UpdateRecentEventsEmptyState(bool disconnected)
         {
             var hasItems = RecentEventsList.Items.Count > 0;
@@ -136,6 +146,8 @@ namespace CuckooInterfaceUI.Pages
 
         private void SetActionButtonsEnabled(bool daemonConnected)
         {
+            // 启动仅在 Core 离线且 Daemon 在线时可用；重启/停止只需 Daemon 在线
+            StartServiceButton.IsEnabled = daemonConnected && !_backend.IsCoreConnected;
             RestartServiceButton.IsEnabled = daemonConnected;
             StopServiceButton.IsEnabled = daemonConnected;
         }
@@ -143,6 +155,30 @@ namespace CuckooInterfaceUI.Pages
         private async void RefreshHome_Click(object sender, RoutedEventArgs e) => await LoadOverviewFromBackendAsync();
 
         private void ViewAllEvents_Click(object sender, RoutedEventArgs e) => NavigateTo(typeof(EventsPage));
+
+        private async void StartService_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_backend.IsDaemonConnected)
+            {
+                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                return;
+            }
+
+            try
+            {
+                StartServiceButton.IsEnabled = false;
+                await _backend.StartCoreAsync();
+                (Window.GetWindow(this) as MainWindow)?.ShowToast("正在启动", "Core 启动后会自动刷新。");
+            }
+            catch (Exception ex)
+            {
+                await ShowBackendErrorAsync("启动 Core 失败", ex);
+            }
+            finally
+            {
+                SetActionButtonsEnabled(_backend.IsDaemonConnected);
+            }
+        }
 
         private async void RestartService_Click(object sender, RoutedEventArgs e)
         {

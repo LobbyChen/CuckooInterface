@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -11,7 +12,7 @@ namespace CuckooInterfaceUI.Pages
     /// <summary>
     /// ConfigPage.xaml 的交互逻辑。
     /// </summary>
-    public partial class ConfigPage : Page
+    public partial class ConfigPage : AutoRefreshPage
     {
         private readonly CoreBackend _backend = CoreBackend.Instance;
 
@@ -21,6 +22,9 @@ namespace CuckooInterfaceUI.Pages
             Loaded += ConfigPage_Loaded;
             Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
+
+        // 每 2 秒自动刷新插件列表（静默模式：保留当前选中项）
+        protected override Task OnAutoRefreshAsync() => LoadPluginsFromBackendAsync(interactive: false);
 
         private async void ConfigPage_Loaded(object sender, RoutedEventArgs e)
         {
@@ -41,7 +45,12 @@ namespace CuckooInterfaceUI.Pages
             });
         }
 
-        private async System.Threading.Tasks.Task LoadPluginsFromBackendAsync()
+        /// <summary>
+        /// 加载插件列表。
+        /// interactive=true：用户点击或连接恢复，错误时给出提示；
+        /// interactive=false：2s 自动刷新的静默模式，保留当前选中的插件。
+        /// </summary>
+        private async Task LoadPluginsFromBackendAsync(bool interactive = true)
         {
             try
             {
@@ -53,7 +62,13 @@ namespace CuckooInterfaceUI.Pages
                 var plugins = await _backend.GetPluginsAsync();
                 var pluginList = plugins.ToList();
 
+                // 记住当前选中项，避免自动刷新把用户正在查看的插件跳走
+                var selectedId = (PluginListBox.SelectedItem as PluginInfo)?.Id;
+
                 PluginListBox.ItemsSource = pluginList;
+
+                if (selectedId != null)
+                    PluginListBox.SelectedItem = pluginList.FirstOrDefault(p => p.Id == selectedId);
 
                 if (pluginList.Count == 0)
                 {
@@ -71,7 +86,7 @@ namespace CuckooInterfaceUI.Pages
                 PluginListBox.SelectedItem = null;
                 if (ex is BackendConnectionException)
                     SetDisconnectedState();
-                else
+                else if (interactive)
                     (Window.GetWindow(this) as CuckooInterfaceUI.MainWindow)?.ShowToast("加载插件失败", ex.Message, true);
             }
         }

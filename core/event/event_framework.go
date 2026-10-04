@@ -33,6 +33,11 @@ type EventBus struct {
 	// Worker 池
 	taskCh      chan EmitTask
 	workerCount int
+
+	// 今日事件计数
+	statsMu         sync.Mutex
+	statsDay        string
+	todayEventCount int64
 }
 
 // EmitTask 表示一次事件触发任务
@@ -174,6 +179,8 @@ func (bus *EventBus) Emit(eventName string, payload string) {
 	if !exists {
 		return
 	}
+	// 累加后端维护的今日事件计数（仅统计有效投递的已注册事件）
+	bus.countTodayEvent()
 	evt.lock.RLock()
 	receivers := make([]receiverEntry, len(evt.receivers))
 	copy(receivers, evt.receivers)
@@ -238,4 +245,29 @@ func (bus *EventBus) GetAllBufferedEvent() []*EmitTask {
 		return bus.eventQueue.GetAll()
 	}
 	return nil
+}
+
+// countTodayEvent 累加今日事件计数，跨天自动清零。
+func (bus *EventBus) countTodayEvent() {
+	today := time.Now().Format("2006-01-02")
+	bus.statsMu.Lock()
+	defer bus.statsMu.Unlock()
+	if bus.statsDay != today {
+		bus.statsDay = today
+		bus.todayEventCount = 0
+	}
+	bus.todayEventCount++
+}
+
+// GetTodayEventCount 返回后端维护的今日事件计数（跨天自动清零）。
+// 该计数独立于事件环形缓冲区，不受其容量与覆盖策略影响。
+func (bus *EventBus) GetTodayEventCount() int64 {
+	today := time.Now().Format("2006-01-02")
+	bus.statsMu.Lock()
+	defer bus.statsMu.Unlock()
+	if bus.statsDay != today {
+		bus.statsDay = today
+		bus.todayEventCount = 0
+	}
+	return bus.todayEventCount
 }
