@@ -21,17 +21,28 @@ import (
 
 // RunMainLoop 实现 Normal 模式的核心主循环
 func RunMainLoop() {
-	// 确保单实例运行
-	utils.EnsureSingleInstance(NormalModePort)
-
+	// 初始化配置管理器
+	// 加载配置
+	cfgManager := config.NewCfgManager()
+	cfgPath := utils.GetFolderPath(constant.ConfigFolder)
+	cfgManager.SetCfgPath(cfgPath)
+	if utils.IsFileExist(cfgPath) {
+		cfgManager.LoadValidConfig(cfgPath)
+	}
+	config.LoadCoreConfig(cfgPath)
+	globalCfg := config.GetCoreConfig()
+	if globalCfg.SingleInstance {
+		// 确保单实例运行
+		utils.EnsureSingleInstance(NormalModePort)
+	}
 	// 初始化全局日志
 	log := logger.Init(logger.LoggerConfig{
-		Level:         "info",
+		Level:         globalCfg.LogLevel,
 		LogDir:        utils.GetFolderPath(constant.LogFolder),
-		MaxSize:       100,
+		MaxSize:       int(globalCfg.LogMaxSize),
 		MaxBackups:    7,
 		MaxAge:        30,
-		Compress:      false,
+		Compress:      globalCfg.LogCompress,
 		ConsoleOutput: true,
 		CacheSize:     1000,
 	})
@@ -41,20 +52,6 @@ func RunMainLoop() {
 	if err := utils.InitFolders(constant.Folders); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to initialize core folders: %v", err))
 	}
-
-	// 初始化配置管理器
-	cfgManager := config.NewCfgManager()
-	cfgPath := utils.GetFolderPath(constant.ConfigFolder)
-	cfgManager.SetCfgPath(cfgPath)
-	if err := cfgManager.LoadValidConfig(cfgPath); err != nil {
-		log.Warnf("Failed to load existing configs, starting with empty config state: %v", err)
-	}
-
-	// 读取 Core 全局配置，并同步到设置内存值
-	if err := config.LoadCoreConfig(cfgPath); err != nil {
-		log.Warnf("Failed to load core config, falling back to defaults: %v", err)
-	}
-	_ = config.GetCoreConfig() //TODO 使用读取的全局配置
 
 	// 初始化事件总线
 	eventBus := event.NewEventBus()
@@ -131,7 +128,6 @@ func RunMainLoop() {
 }
 
 // registerInternalEvent 注册一个内部事件源，并把注册过程中的错误记入日志。
-// 单个事件注册失败不影响其他事件，因此这里只记录不中断。
 func registerInternalEvent(iem *event.InternalEventManager, ev provider.InternalEvent, log *logger.Logger) {
 	for _, err := range iem.AddInternalEvent(ev) {
 		log.Errorf("Failed to register internal event: %v", err)
@@ -188,8 +184,6 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 			log.Errorf("Failed to auto-load plugin [%s]: %v", pf.Name(), err)
 		} else {
 			// 为成功加载的插件注册配置文件占位。
-			// 必须复用已设置 CfgPath 的 cfgManager，否则配置会落盘到当前工作目录
-			// 且注册结果随临时 manager 一起丢失。
 			if err := cfgManager.RegisterConfig(pf.Meta.ID); err != nil {
 				log.Warnf("Failed to register config for plugin [%s]: %v", pf.Name(), err)
 			}
