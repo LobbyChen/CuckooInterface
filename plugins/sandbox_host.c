@@ -36,6 +36,7 @@ typedef enum
     TASK_GET_SETTINGS,
     TASK_GET_RUNTIME_STATE,
     TASK_SET_SETTING,
+    TASK_GET_OPERATIONS,
     TASK_INVOKE_OPERATION,
     TASK_RUN_LOOP,
     TASK_SHUTDOWN
@@ -214,6 +215,14 @@ DWORD WINAPI SandboxWorker(LPVOID param)
                     task.setting_key,
                     task.value_json,
                     task.out_response);
+            else
+                task.result = -2;
+            break;
+
+        case TASK_GET_OPERATIONS:
+            if (ctx->iface->get_operations)
+                task.result = ctx->iface->get_operations(
+                    task.api, task.out_response);
             else
                 task.result = -2;
             break;
@@ -508,6 +517,16 @@ int sandbox_set_setting(void *handle,
     free(task.setting_key);
     free(task.value_json);
     return result;
+}
+
+int sandbox_get_operations(void *handle,
+                           CuckooHostAPI *api,
+                           char **out_json)
+{
+    SandboxContext *ctx = (SandboxContext *)handle;
+    SandboxTask task = {0};
+    task.type = TASK_GET_OPERATIONS;
+    return submit_control_task(ctx, &task, api, out_json);
 }
 
 int sandbox_invoke_operation(void *handle,
