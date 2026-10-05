@@ -394,6 +394,22 @@ func (k *Kernel) GetRuntimeState() (string, error) {
 	return k.finishControlResponse(cAPI, &response, rc)
 }
 
+func (k *Kernel) GetOperations() (string, error) {
+	cAPI, err := k.controlHostAPI()
+	if err != nil {
+		return "", err
+	}
+
+	var response *C.char
+	rc := C.sandbox_get_operations(
+		k.sandboxHandle,
+		cAPI,
+		&response,
+	)
+
+	return k.finishControlResponse(cAPI, &response, rc)
+}
+
 func (k *Kernel) SetSetting(key, valueJSON string) (string, error) {
 	cAPI, err := k.controlHostAPI()
 	if err != nil {
