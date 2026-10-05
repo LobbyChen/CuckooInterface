@@ -51,6 +51,10 @@ int sandbox_set_setting(void* ctx,
                         const char* value_json,
                         char** out_json);
 
+int sandbox_get_operations(void* ctx,
+                           CuckooHostAPI* api,
+                           char** out_json);
+
 int sandbox_invoke_operation(void* ctx,
                              CuckooHostAPI* api,
                              const char* operation_id,
