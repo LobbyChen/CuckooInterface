@@ -14,6 +14,7 @@ extern void go_log_info_gateway(char* msg);
 extern void go_log_error_gateway(char* msg);
 extern char* go_get_plugin_config_gateway(char* plug_name);
 extern void go_into_loop_report_gateway(char* kernel_id);
+extern char* go_operation_gateway(char* operation_id, char* request_json);
 extern void go_panic_gateway(char* reason);
 // 桥接函数
 static void c_emit_event_bridge(const char* eventName, const char* jsonPayload) {
@@ -31,6 +32,12 @@ return (const char*)go_get_plugin_config_gateway((char*)plug_name);
 static void c_into_loop_report_bridge(const char* kernel_id) {
 go_into_loop_report_gateway((char*)kernel_id);
 }
+static const char* c_operation_bridge(const char* operation_id,
+                                      const char* request_json) {
+return (const char*)go_operation_gateway(
+    (char*)operation_id,
+    (char*)request_json);
+}
 static void c_panic_bridge(const char* reason) {
 go_panic_gateway((char*)reason);
 }
@@ -39,12 +46,14 @@ typedef void (*emit_event_fn)(const char*, const char*);
 typedef void (*log_fn)(const char*);
 typedef const char* (*get_config_fn)(const char*);
 typedef void (*loop_report_fn)(const char*);
+typedef const char* (*operation_fn)(const char*, const char*);
 typedef void (*panic_fn)(const char*);
 static emit_event_fn get_emit_event_bridge(void)       { return c_emit_event_bridge; }
 static log_fn        get_log_info_bridge(void)          { return c_log_info_bridge; }
 static log_fn        get_log_error_bridge(void)         { return c_log_error_bridge; }
 static get_config_fn get_get_plugin_config_bridge(void) { return c_get_plugin_config_bridge; }
 static loop_report_fn get_into_loop_report_bridge(void) { return c_into_loop_report_bridge; }
+static operation_fn  get_operation_bridge(void)         { return c_operation_bridge; }
 static panic_fn      get_panic_bridge(void)             { return c_panic_bridge; }
 */
 import "C"
@@ -95,6 +104,7 @@ type HostAPI struct {
 	LogError        func(msg string)
 	GetPluginConfig func(plugin_name string) string
 	IntoLoopReport  func(kernel_id string)
+	Operation       func(operationID, requestJSON string) string
 	Panic           func(reason string)
 }
 type Kernel struct {
@@ -189,6 +199,17 @@ func go_into_loop_report_gateway(kernelID *C.char) {
 	}
 }
 
+//export go_operation_gateway
+func go_operation_gateway(operationID *C.char, requestJSON *C.char) *C.char {
+	api := currentHostAPI()
+	if api != nil && api.Operation != nil {
+		return allocReturnedCString(
+			api.Operation(C.GoString(operationID), C.GoString(requestJSON)),
+		)
+	}
+	return nil
+}
+
 //export go_panic_gateway
 func go_panic_gateway(reason *C.char) {
 	api := currentHostAPI()
@@ -234,6 +255,7 @@ func (k *Kernel) InitRuntime(api *HostAPI) error {
 	cAPI.log_error = (*[0]byte)(unsafe.Pointer(C.get_log_error_bridge()))
 	cAPI.get_plugin_config = (*[0]byte)(unsafe.Pointer(C.get_get_plugin_config_bridge()))
 	cAPI.into_loop_report = (*[0]byte)(unsafe.Pointer(C.get_into_loop_report_bridge()))
+	cAPI.operation = (*[0]byte)(unsafe.Pointer(C.get_operation_bridge()))
 	cAPI.panic = (*[0]byte)(unsafe.Pointer(C.get_panic_bridge()))
 	rc := C.sandbox_init_runtime(k.sandboxHandle, cAPI)
 	if rc != 0 {
@@ -286,6 +308,144 @@ func (k *Kernel) GetChan() chan struct{} {
 	defer k.mu.Unlock()
 	return k.loopStartedCh
 }
+
+
+/* Runtime Control Plane */
+
+func (k *Kernel) controlHostAPI() (*C.CuckooHostAPI, error) {
+	k.mu.Lock()
+	closed := k.closed
+	handle := k.sandboxHandle
+	k.mu.Unlock()
+
+	if closed || handle == nil {
+		return nil, fmt.Errorf("cuckoo: kernel already closed")
+	}
+
+	return allocCHostAPI(currentHostAPI())
+}
+
+func (k *Kernel) finishControlResponse(
+	cAPI *C.CuckooHostAPI,
+	response **C.char,
+	rc C.int,
+) (string, error) {
+	defer C.free(unsafe.Pointer(cAPI))
+
+	if rc != 0 {
+		if response != nil && *response != nil {
+			C.sandbox_free_kernel_response(
+				k.sandboxHandle,
+				*response,
+			)
+			*response = nil
+		}
+
+		k.handleCrashIfNeeded()
+		return "", fmt.Errorf(
+			"cuckoo: kernel control call failed with code %d",
+			int(rc),
+		)
+	}
+
+	if response == nil || *response == nil {
+		return "", nil
+	}
+
+	value := C.GoString(*response)
+	C.sandbox_free_kernel_response(
+		k.sandboxHandle,
+		*response,
+	)
+	*response = nil
+
+	return value, nil
+}
+
+func (k *Kernel) GetSettingsPanel() (string, error) {
+	cAPI, err := k.controlHostAPI()
+	if err != nil {
+		return "", err
+	}
+
+	var response *C.char
+	rc := C.sandbox_get_settings_panel(
+		k.sandboxHandle,
+		cAPI,
+		&response,
+	)
+
+	return k.finishControlResponse(cAPI, &response, rc)
+}
+
+func (k *Kernel) GetRuntimeState() (string, error) {
+	cAPI, err := k.controlHostAPI()
+	if err != nil {
+		return "", err
+	}
+
+	var response *C.char
+	rc := C.sandbox_get_runtime_state(
+		k.sandboxHandle,
+		cAPI,
+		&response,
+	)
+
+	return k.finishControlResponse(cAPI, &response, rc)
+}
+
+func (k *Kernel) SetSetting(key, valueJSON string) (string, error) {
+	cAPI, err := k.controlHostAPI()
+	if err != nil {
+		return "", err
+	}
+
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+
+	cValue := C.CString(valueJSON)
+	defer C.free(unsafe.Pointer(cValue))
+
+	var response *C.char
+	rc := C.sandbox_set_setting(
+		k.sandboxHandle,
+		cAPI,
+		cKey,
+		cValue,
+		&response,
+	)
+
+	return k.finishControlResponse(cAPI, &response, rc)
+}
+
+func (k *Kernel) InvokeOperation(
+	operationID,
+	requestJSON string,
+) (string, error) {
+	cAPI, err := k.controlHostAPI()
+	if err != nil {
+		return "", err
+	}
+
+	cOperationID := C.CString(operationID)
+	defer C.free(unsafe.Pointer(cOperationID))
+
+	cRequest := C.CString(requestJSON)
+	defer C.free(unsafe.Pointer(cRequest))
+
+	var response *C.char
+	rc := C.sandbox_invoke_operation(
+		k.sandboxHandle,
+		cAPI,
+		cOperationID,
+		cRequest,
+		&response,
+	)
+
+	return k.finishControlResponse(cAPI, &response, rc)
+}
+
+
 
 // StartLoop 同步启动 Kernel 循环
 func (k *Kernel) StartLoop() error {

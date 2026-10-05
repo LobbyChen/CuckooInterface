@@ -33,6 +33,10 @@ typedef enum
     TASK_LOAD,
     TASK_TRIGGER,
     TASK_UNLOAD,
+    TASK_GET_SETTINGS,
+    TASK_GET_RUNTIME_STATE,
+    TASK_SET_SETTING,
+    TASK_INVOKE_OPERATION,
     TASK_RUN_LOOP,
     TASK_SHUTDOWN
 } TaskType;
@@ -46,6 +50,13 @@ typedef struct
     CuckooPluginHandle handle;
     CuckooListenerRecord listener;
     char *payload;
+
+    char *setting_key;
+    char *value_json;
+    char *operation_id;
+    char *request_json;
+    char **out_response;
+
     HANDLE done_event; // NULL 表示异步任务
     int result;
 } SandboxTask;
@@ -179,6 +190,45 @@ DWORD WINAPI SandboxWorker(LPVOID param)
             if (ctx->iface->unload_plugin)
                 ctx->iface->unload_plugin(task.handle);
             break;
+
+        case TASK_GET_SETTINGS:
+            if (ctx->iface->get_settings_panel)
+                task.result = ctx->iface->get_settings_panel(
+                    task.api, task.out_response);
+            else
+                task.result = -2;
+            break;
+
+        case TASK_GET_RUNTIME_STATE:
+            if (ctx->iface->get_runtime_state)
+                task.result = ctx->iface->get_runtime_state(
+                    task.api, task.out_response);
+            else
+                task.result = -2;
+            break;
+
+        case TASK_SET_SETTING:
+            if (ctx->iface->set_setting)
+                task.result = ctx->iface->set_setting(
+                    task.api,
+                    task.setting_key,
+                    task.value_json,
+                    task.out_response);
+            else
+                task.result = -2;
+            break;
+
+        case TASK_INVOKE_OPERATION:
+            if (ctx->iface->invoke_operation)
+                task.result = ctx->iface->invoke_operation(
+                    task.api,
+                    task.operation_id,
+                    task.request_json,
+                    task.out_response);
+            else
+                task.result = -2;
+            break;
+
         case TASK_SHUTDOWN:
             if (ctx->iface->shutdown_runtime)
                 ctx->iface->shutdown_runtime();
@@ -212,6 +262,7 @@ static int submit_task(SandboxContext *ctx, SandboxTask *task)
     if (!node)
         return -1;
     node->task = *task;
+    node->task.result = -1;
     node->task.done_event = CreateEvent(NULL, FALSE, FALSE, NULL);
     node->next = NULL;
     // 入队
@@ -395,6 +446,110 @@ void sandbox_unload_plugin(void *handle, CuckooPluginHandle h)
     submit_task(ctx, &t);
 }
 // 启动 run_loop：在专用线程中运行
+/* Runtime Control Plane。*/
+static int submit_control_task(SandboxContext *ctx,
+                               SandboxTask *task,
+                               CuckooHostAPI *api,
+                               char **out_json)
+{
+    if (!ctx || !task || !out_json)
+        return -1;
+
+    *out_json = NULL;
+    task->api = api;
+    task->out_response = out_json;
+    return submit_task(ctx, task);
+}
+
+int sandbox_get_settings_panel(void *handle,
+                               CuckooHostAPI *api,
+                               char **out_json)
+{
+    SandboxContext *ctx = (SandboxContext *)handle;
+    SandboxTask task = {0};
+    task.type = TASK_GET_SETTINGS;
+    return submit_control_task(ctx, &task, api, out_json);
+}
+
+int sandbox_get_runtime_state(void *handle,
+                              CuckooHostAPI *api,
+                              char **out_json)
+{
+    SandboxContext *ctx = (SandboxContext *)handle;
+    SandboxTask task = {0};
+    task.type = TASK_GET_RUNTIME_STATE;
+    return submit_control_task(ctx, &task, api, out_json);
+}
+
+int sandbox_set_setting(void *handle,
+                        CuckooHostAPI *api,
+                        const char *key,
+                        const char *value_json,
+                        char **out_json)
+{
+    SandboxContext *ctx = (SandboxContext *)handle;
+    SandboxTask task = {0};
+
+    if (!key || !value_json)
+        return -1;
+
+    task.type = TASK_SET_SETTING;
+    task.setting_key = _strdup(key);
+    task.value_json = _strdup(value_json);
+
+    if (!task.setting_key || !task.value_json)
+    {
+        free(task.setting_key);
+        free(task.value_json);
+        return -1;
+    }
+
+    int result = submit_control_task(ctx, &task, api, out_json);
+    free(task.setting_key);
+    free(task.value_json);
+    return result;
+}
+
+int sandbox_invoke_operation(void *handle,
+                             CuckooHostAPI *api,
+                             const char *operation_id,
+                             const char *request_json,
+                             char **out_json)
+{
+    SandboxContext *ctx = (SandboxContext *)handle;
+    SandboxTask task = {0};
+
+    if (!operation_id || !request_json)
+        return -1;
+
+    task.type = TASK_INVOKE_OPERATION;
+    task.operation_id = _strdup(operation_id);
+    task.request_json = _strdup(request_json);
+
+    if (!task.operation_id || !task.request_json)
+    {
+        free(task.operation_id);
+        free(task.request_json);
+        return -1;
+    }
+
+    int result = submit_control_task(ctx, &task, api, out_json);
+    free(task.operation_id);
+    free(task.request_json);
+    return result;
+}
+
+void sandbox_free_kernel_response(void *handle, char *response)
+{
+    SandboxContext *ctx = (SandboxContext *)handle;
+
+    if (!ctx || !response || !ctx->iface ||
+        !ctx->iface->free_response)
+        return;
+
+    ctx->iface->free_response(response);
+}
+
 void sandbox_start_loop_async(void *handle, CuckooHostAPI *api)
 {
     SandboxContext *ctx = (SandboxContext *)handle;
