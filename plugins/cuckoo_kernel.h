@@ -79,6 +79,10 @@ typedef struct {
                      const char* value_json,
                      char** out_json);
 
+  /* 获取 Kernel 提供的全部 Operation 描述。 */
+  int (*get_operations)(const CuckooHostAPI* api,
+                        char** out_json);
+
   /* 执行 Kernel-defined operation，例如 runtime.discover。 */
   int (*invoke_operation)(const CuckooHostAPI* api,
                           const char* operation_id,
