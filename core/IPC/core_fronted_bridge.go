@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	pipe "gopkg.in/natefinch/npipe.v2"
+	winio "github.com/Microsoft/go-winio"
 )
 
 // 与IPC的UI层接口定义
@@ -28,7 +28,7 @@ type CoreIpcInterface struct {
 	once sync.Once
 
 	logger    *logger.Logger
-	listener  *pipe.PipeListener
+	listener  net.Listener
 	startTime time.Time
 }
 
@@ -52,7 +52,13 @@ func (ipc *CoreIpcInterface) check() bool {
 }
 
 func (ipc *CoreIpcInterface) CreatePipe() error {
-	l, err := pipe.Listen(constant.CoreNamePipe)
+	// 限制管道访问权限：只允许 SYSTEM、管理员与当前用户连接，
+	// 防止任意本地进程通过命名管道执行高危 IPC 方法。
+	sddl, err := utils.PipeSDDL()
+	if err != nil {
+		return fmt.Errorf("failed to build pipe SDDL: %w", err)
+	}
+	l, err := winio.ListenPipe(constant.CoreNamePipe, &winio.PipeConfig{SecurityDescriptor: sddl})
 	if err != nil {
 		return err
 	}
@@ -380,9 +386,13 @@ func (ipc *CoreIpcInterface) handleRemovePlugin(params json.RawMessage) (json.Ra
 		return nil, fmt.Errorf("plugin %s not found", p.ID)
 	}
 
-	// Kernel 插件不由 PluginManager 管理，跳过 UnloadPlugin；仅删除文件
-	if file.Typo != constant.KERNEL {
-		_ = ipc.pm.UnloadPlugin(file)
+	// Kernel 插件由 KernelManager 管理：先真正停止运行中的实例，再删除文件
+	if file.Typo == constant.KERNEL {
+		if err := ipc.km.StopKernel(p.ID); err != nil {
+			ipc.logger.Warnf("stop kernel %s before remove failed: %v", p.ID, err)
+		}
+	} else if err := ipc.pm.UnloadPlugin(file); err != nil {
+		return nil, fmt.Errorf("unload plugin failed: %w", err)
 	}
 	// 从文件管理器移除
 	if err := ipc.pfm.RemovePlugin(p.ID); err != nil {
@@ -443,8 +453,15 @@ func (ipc *CoreIpcInterface) handleInstallPlugin(params json.RawMessage) (json.R
 	if !utils.IsFileExist(p.Path) {
 		return nil, fmt.Errorf("file %s not exist", p.Path)
 	}
-	// 拷贝到插件类型文件夹，防止插件加载失败
-	if err := utils.CopyFile(p.Path, filepath.Join(constant.UserFolder, plugTypeToString(plugType), filepath.Base(p.Path))); err != nil {
+	// 拷贝到 exe 目录下的插件类型文件夹（持久化，重启后自动加载）。
+	// 注意必须以可执行目录为基准：此前用相对路径，若工作目录与
+	// exe 目录不一致，插件会被拷贝到错误位置并静默失效。
+	exeDir, err := utils.GetExecutableDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get executable dir: %w", err)
+	}
+	dstPath := filepath.Join(exeDir, constant.UserFolder, plugTypeToString(plugType), filepath.Base(p.Path))
+	if err := utils.CopyFile(p.Path, dstPath); err != nil {
 		return nil, err
 	}
 	if err := ipc.pfm.ExtractAndLoadExternalPlugin(p.Path, plugType); err != nil {

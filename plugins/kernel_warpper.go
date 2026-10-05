@@ -333,6 +333,12 @@ func (k *Kernel) IsAlive() bool {
 	return C.is_sandbox_alive(k.sandboxHandle) == 1
 }
 
+// CrashReason 返回最近一次崩溃的原因；未崩溃过时为空字符串。
+// 供运行期崩溃监控等场景查询。
+func (k *Kernel) CrashReason() string {
+	return k.getCrashReason()
+}
+
 // getCrashReason 从 C 侧读取 VEH 记录的崩溃原因
 func (k *Kernel) getCrashReason() string {
 	cbuf := make([]byte, 128)

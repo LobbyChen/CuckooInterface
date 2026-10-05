@@ -206,9 +206,11 @@ func (pm *PluginFileManager) RemovePlugin(id string) error {
 		return fmt.Errorf("plugin %s not found", id)
 	}
 
-	// 清理解压目录
+	// 清理解压目录；失败必须上报，避免残留目录与文件被静默忽略
 	if target.dir != "" {
-		_ = os.RemoveAll(target.dir)
+		if err := os.RemoveAll(target.dir); err != nil {
+			return fmt.Errorf("failed to remove extracted dir for plugin %s: %w", id, err)
+		}
 	}
 	return nil
 }

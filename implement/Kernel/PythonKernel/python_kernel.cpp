@@ -97,6 +97,29 @@ namespace python_kernel
 
         // 绝对不要持有 GIL join。目标 Python 线程需要重新取得 GIL 才能
         // 处理异步异常并从 exec_module 返回。
+
+        // 有界等待 worker 结束：插件顶层死循环或阻塞在 C 扩展时，
+        // SystemExit 可能无法及时送达。超时后 detach 并返回 -2，
+        // 调用方必须跳过对该实例的一切清理，避免 use-after-free。
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::seconds(10);
+        while (!inst->worker_finished.load())
+        {
+            if (std::chrono::steady_clock::now() >= deadline)
+            {
+                inst->worker.detach();
+                StorePyThreadID(inst, 0);
+                if (host_api && host_api->log_error)
+                {
+                    std::string msg =
+                        "[PythonKernel] worker did not exit within 10s, detached plugin=" +
+                        inst->plugin_id;
+                    host_api->log_error(msg.c_str());
+                }
+                return -2;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
         inst->worker.join();
         StorePyThreadID(inst, 0);
         return result;
@@ -432,6 +455,14 @@ namespace python_kernel
         std::string pp(plugin_path), mn(module_name);
         inst->worker = std::thread([inst, pp, mn, this]()
                                    {
+    // RAII：无论从哪个 return 路径退出，都标记 worker 已结束，
+    // 供 StopPythonWorker 的有界等待使用。
+    struct FinishedMark
+    {
+        std::atomic<bool> &flag;
+        ~FinishedMark() { flag.store(true); }
+    } finished_mark{inst->worker_finished};
+
     GilGuard gil;
     StorePyThreadID(inst, PyThreadState_Get()->thread_id);
 
@@ -589,7 +620,19 @@ namespace python_kernel
 
         // 先请求 Python 工作线程退出；SetAsyncExc 必须在持有 GIL 时调用，
         // 但 join 必须在释放 GIL 后执行。
-        StopPythonWorker(inst, host_api_, "plugin unload");
+        int stop_result = StopPythonWorker(inst, host_api_, "plugin unload");
+        if (stop_result == -2)
+        {
+            // worker 未能在时限内退出（死循环/阻塞）：线程已 detach，
+            // 仍可能访问 inst；放弃一切清理，避免 use-after-free。
+            if (host_api_ && host_api_->log_error)
+            {
+                std::string msg = "[PythonKernel] skip cleanup for hung plugin " +
+                                  inst->plugin_id;
+                host_api_->log_error(msg.c_str());
+            }
+            return;
+        }
 
         // 清理 Python 对象（此时线程已退出，安全操作）
         {
@@ -650,9 +693,17 @@ namespace python_kernel
             std::lock_guard<std::mutex> lk(plugins_mu_);
             to_delete.swap(plugins_);
         }
+        bool has_hung_worker = false;
         for (auto *inst : to_delete)
         {
-            StopPythonWorker(inst, host_api_, "runtime shutdown");
+            int r = StopPythonWorker(inst, host_api_, "runtime shutdown");
+            if (r == -2)
+            {
+                // 超时：跳过清理，线程已 detach；实例泄漏以避免 UAF，
+                // 同时标记存在挂起线程，推迟 Py_Finalize。
+                has_hung_worker = true;
+                continue;
+            }
             {
                 GilGuard gil;
                 for (auto *cb : inst->callbacks)
@@ -668,12 +719,25 @@ namespace python_kernel
 
         if (python_initialized_)
         {
-            PyEval_RestoreThread(main_thread_state_); //  恢复主线程 GIL
-            Py_XDECREF(sdk_module_);
-            sdk_module_ = nullptr;
-            Py_Finalize();
-            python_initialized_ = false;
-            main_thread_state_ = nullptr;
+            if (has_hung_worker)
+            {
+                // 仍有 worker 在访问 Python 对象，此时 Finalize 会造成
+                // 悬挂线程崩溃；进程即将退出，交由操作系统回收。
+                if (host_api_ && host_api_->log_error)
+                {
+                    host_api_->log_error(
+                        "[PythonKernel] skip Py_Finalize: hung worker(s) still running");
+                }
+            }
+            else
+            {
+                PyEval_RestoreThread(main_thread_state_); //  恢复主线程 GIL
+                Py_XDECREF(sdk_module_);
+                sdk_module_ = nullptr;
+                Py_Finalize();
+                python_initialized_ = false;
+                main_thread_state_ = nullptr;
+            }
         }
 
         if (host_api_ && host_api_->log_info)

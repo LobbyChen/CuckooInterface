@@ -89,7 +89,34 @@ func (cm *CfgManager) LoadValidConfig(dir string) error {
 	}
 	return nil
 }
+
+// validPluginID 校验插件 ID 是否可用于构造配置文件路径。
+//
+// 插件 ID 来自 META-INF.json，由插件包作者控制。若直接拼入
+// filepath.Join 生成 "<id>.cfg" 路径，恶意 ID（如 "..\..\evil"）可
+// 在任意位置创建/覆盖文件。这里只允许字母数字、下划线、短横线与点。
+func validPluginID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '-' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (cm *CfgManager) RegisterConfig(PluginName string) error {
+	// 拒绝含路径分隔符等非法字符的插件 ID，防止任意文件写入
+	if !validPluginID(PluginName) {
+		return fmt.Errorf("invalid plugin id %q for config path", PluginName)
+	}
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
 	// 检查是否已经注册
@@ -125,6 +152,9 @@ func (cm *CfgManager) RegisterConfig(PluginName string) error {
 	return nil
 }
 func (cm *CfgManager) GetPluginConfig(PluginName string, obj *SinglePluginConfig) error {
+	if !validPluginID(PluginName) {
+		return fmt.Errorf("invalid plugin id %q", PluginName)
+	}
 	if _, ok := cm.pluginsCfg[PluginName]; !ok {
 		return fmt.Errorf("plugin config doesn't exist: %s", PluginName)
 	}
@@ -134,6 +164,9 @@ func (cm *CfgManager) GetPluginConfig(PluginName string, obj *SinglePluginConfig
 	return nil
 }
 func (cm *CfgManager) WriteConfig(pluginName string, config *SinglePluginConfig) error {
+	if !validPluginID(pluginName) {
+		return fmt.Errorf("invalid plugin id %q for config path", pluginName)
+	}
 	if _, ok := cm.pluginsCfg[pluginName]; !ok {
 		return fmt.Errorf("plugin config doesn't exist: %s", pluginName)
 	}

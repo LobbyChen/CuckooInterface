@@ -31,6 +31,8 @@ struct PythonPluginInstance {
   std::thread worker;
   std::atomic<bool> exec_failed{false};
   std::atomic<bool> exec_done{false};
+  // worker 线程从任意路径退出时置位（RAII 保证），供有界 join 使用
+  std::atomic<bool> worker_finished{false};
   unsigned long py_thread_id = 0;
 };
 

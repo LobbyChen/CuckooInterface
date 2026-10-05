@@ -250,3 +250,56 @@ func (km *KernelManager) ShutdownAll() {
 		k.kernel.Destroy()
 	}
 }
+
+// StopKernel 关闭并销毁指定 ID 的 Kernel，将其从管理器移除。
+// 用于移除插件等需要真正停止运行中 Kernel 的场景。
+func (km *KernelManager) StopKernel(id string) error {
+	km.lock.Lock()
+	defer km.lock.Unlock()
+	for i, k := range km.kernels {
+		if k.id == id {
+			if k.isInit {
+				k.kernel.ShutdownRuntime()
+			}
+			k.kernel.Destroy()
+			km.kernels = append(km.kernels[:i], km.kernels[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("kernel %s not found", id)
+}
+
+// StartCrashMonitor 为所有已初始化 Kernel 启动运行期崩溃监控。
+//
+// Kernel 崩溃时 VEH 会隔离崩溃线程并置崩溃标志，但 Core 侧如果不主动
+// 查询，UI 仍会显示该 Kernel 已启用。监控协程每 5 秒检查一次，发现
+// 崩溃后通过 Panic 回调通知用户并退出监控。
+func (km *KernelManager) StartCrashMonitor() {
+	km.lock.Lock()
+	kernels := make([]*plugins.Kernel, 0, len(km.kernels))
+	for _, k := range km.kernels {
+		if k.isInit {
+			kernels = append(kernels, k.kernel)
+		}
+	}
+	km.lock.Unlock()
+
+	for _, kernel := range kernels {
+		go func(k *plugins.Kernel) {
+			for {
+				if !k.IsAlive() {
+					reason := k.CrashReason()
+					if reason == "" {
+						reason = "kernel crashed (unknown reason)"
+					}
+					api := km.HostAPI
+					if api != nil && api.Panic != nil {
+						api.Panic("Kernel crashed while running: " + reason)
+					}
+					return
+				}
+				time.Sleep(5 * time.Second)
+			}
+		}(kernel)
+	}
+}

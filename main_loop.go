@@ -21,15 +21,29 @@ import (
 
 // RunMainLoop 实现 Normal 模式的核心主循环
 func RunMainLoop() {
+	// 先初始化核心目录结构（logs/user/plugins/configs 等）。
+	// 必须早于 LoadCoreConfig：首次启动时 configs 目录还不存在，
+	// 默认配置落盘依赖该目录已创建。
+	if err := utils.InitFolders(constant.Folders); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize core folders: %v\n", err)
+		os.Exit(1)
+	}
+
 	// 初始化配置管理器
 	// 加载配置
 	cfgManager := config.NewCfgManager()
 	cfgPath := utils.GetFolderPath(constant.ConfigFolder)
 	cfgManager.SetCfgPath(cfgPath)
-	if utils.IsFileExist(cfgPath) {
-		cfgManager.LoadValidConfig(cfgPath)
+	// 无条件尝试加载已有插件配置：LoadValidConfig 内部对不存在的
+	// 目录返回 os.ErrNotExist，此时静默跳过即可。此前用 IsFileExist
+	// 判断目录恒为 false，导致插件 .cfg 配置重启后全部丢失。
+	if err := cfgManager.LoadValidConfig(cfgPath); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: failed to load plugin configs: %v\n", err)
 	}
-	config.LoadCoreConfig(cfgPath)
+	// 读取全局配置；文件损坏等错误不阻断启动，但需记录而非吞掉
+	if err := config.LoadCoreConfig(cfgPath); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+	}
 	globalCfg := config.GetCoreConfig()
 	if globalCfg.SingleInstance {
 		// 确保单实例运行
@@ -48,11 +62,6 @@ func RunMainLoop() {
 	})
 	log.Info("CuckooInterface Core starting in Normal mode...")
 
-	// 初始化核心工作目录结构
-	if err := utils.InitFolders(constant.Folders); err != nil {
-		log.Fatal(fmt.Sprintf("Failed to initialize core folders: %v", err))
-	}
-
 	// 初始化事件总线
 	eventBus := event.NewEventBus()
 	// 构造内部事件管理器
@@ -64,8 +73,8 @@ func RunMainLoop() {
 	// 磁盘插拔监控（system.disk.*）
 	registerInternalEvent(internalEventBus, &disk.DiskMonitor{}, log)
 	// TODO 注入更多events
-	// 启动内部事件
-	internalEventBus.Start()
+	// 注意：internalEventBus.Start() 延后到插件加载完成后再调用，
+	// 保证 foundation.framework.started 等启动事件不会在监听器注册前丢失。
 	// 构造 Host API
 	hostAPI := &plugins.HostAPI{
 		EmitEvent: func(eventName, payload string) {
@@ -123,6 +132,10 @@ func RunMainLoop() {
 	// 扫描、解压并加载插件
 	loadPlugins(pfm, &km, pm, log, cfgManager)
 
+	// 所有插件加载完成后，再启动内部事件源。
+	// 保证 foundation.framework.started 等启动事件能被已注册的监听器收到。
+	internalEventBus.Start()
+
 	// 阻塞等待退出信号或崩溃
 	waitForShutdown(&km, log, internalEventBus)
 }
@@ -173,9 +186,6 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 		}
 	}
 
-	// 启动所有已初始化 Kernel 的事件循环
-	km.StartAllLoops()
-
 	// 自动加载 Base 和 Active 插件
 	allPlugins := append([]*plugin_manager.SinglePluginFile{}, pfm.GetBasePlugins()...)
 	allPlugins = append(allPlugins, pfm.GetActivePlugins()...)
@@ -190,6 +200,14 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 			log.Infof("Auto-loaded plugin [%s]", pf.Name())
 		}
 	}
+
+	// 所有插件注册完成后再启动 Kernel 事件循环，避免启动早期
+	// 由插件/框架发出的事件在监听器注册前被丢弃。
+	km.StartAllLoops()
+
+	// 对运行中的 Kernel 启动崩溃监控：一旦运行期崩溃（VEH 隔离后），
+	// 通过 Panic 回调通知用户并更新状态，避免 UI 显示与实际不符。
+	km.StartCrashMonitor()
 }
 
 // waitForShutdown 阻塞主协程，直到收到操作系统的终止信号

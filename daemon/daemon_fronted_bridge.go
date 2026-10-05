@@ -1,16 +1,17 @@
 package daemon
 
 import (
+	IPC "CuckooInterface/core/IPC"
 	"CuckooInterface/core/constant"
-	IPC "CuckooInterface/core/ipc"
 	"CuckooInterface/core/logger"
+	"CuckooInterface/core/utils"
 	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
-	pipe "gopkg.in/natefinch/npipe.v2"
+	winio "github.com/Microsoft/go-winio"
 )
 
 // CoreControlFunc 定义控制 Core 生命周期的函数签名
@@ -19,7 +20,7 @@ type CoreControlFunc func() error
 // DaemonIpcInterface 定义与守护进程/UI层交互的接口
 type DaemonIpcInterface struct {
 	logger    *logger.Logger
-	listener  *pipe.PipeListener
+	listener  net.Listener
 	startCore CoreControlFunc // 注入的启动函数
 	stopCore  CoreControlFunc // 注入的停止函数
 	once      sync.Once
@@ -38,7 +39,13 @@ func (ipc *DaemonIpcInterface) Init(logger *logger.Logger, startCore, stopCore C
 
 // CreatePipe 创建命名管道监听器
 func (ipc *DaemonIpcInterface) CreatePipe() error {
-	l, err := pipe.Listen(constant.DaemonNamePipe)
+	// 与 Core 管道一致，限制访问权限到 SYSTEM / 管理员 / 当前用户，
+	// 避免任意本地进程控制 Core 的生命周期。
+	sddl, err := utils.PipeSDDL()
+	if err != nil {
+		return fmt.Errorf("failed to build pipe SDDL: %w", err)
+	}
+	l, err := winio.ListenPipe(constant.DaemonNamePipe, &winio.PipeConfig{SecurityDescriptor: sddl})
 	if err != nil {
 		return fmt.Errorf("failed to listen on pipe %s: %w", constant.DaemonNamePipe, err)
 	}

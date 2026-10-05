@@ -203,6 +203,10 @@ DWORD WINAPI SandboxWorker(LPVOID param)
     // VEH 全局共享
     return 0;
 }
+// 单个任务的最长执行时间。插件回调（尤其 Lua）可能死循环或阻塞，
+// 若无上限会占死唯一的工作线程，导致该 Kernel 的卸载/关闭永久挂起。
+#define TASK_TIMEOUT_MS 10000
+
 // 提交任务并等待完成
 static int submit_task(SandboxContext *ctx, SandboxTask *task)
 {
@@ -227,21 +231,38 @@ static int submit_task(SandboxContext *ctx, SandboxTask *task)
     ctx->task_tail = node;
     ReleaseMutex(ctx->task_mutex);
     SetEvent(ctx->task_event); // 唤醒工作线程
-    // 等待任务完成或线程崩溃
+    // 等待任务完成或线程崩溃，带超时兜底
     HANDLE handles[2] = {node->task.done_event, ctx->hThread};
-    DWORD waitResult = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
-    int result = node->task.result;
-    CloseHandle(node->task.done_event);
-    free(node);
+    DWORD waitResult = WaitForMultipleObjects(2, handles, FALSE, TASK_TIMEOUT_MS);
     if (waitResult == WAIT_OBJECT_0)
     {
+        int result = node->task.result;
+        CloseHandle(node->task.done_event);
+        free(node);
         return result;
     }
-    else
+    if (waitResult == WAIT_TIMEOUT)
     {
+        // 任务超时（插件回调死循环/阻塞）：标记沙箱已报废，拒绝后续任务。
+        // 注意不能在此释放 node / done_event：工作线程仍可能正在执行该
+        // 任务，执行完毕后会自行 SetEvent 并 free(node)。沙箱进入崩溃态，
+        // 后续 submit_task 直接返回 -1，上层据此感知 Kernel 失效。
         ctx->is_crashed = TRUE;
+        ctx->is_running = FALSE;
+        snprintf(ctx->crash_reason, sizeof(ctx->crash_reason),
+                 "Kernel %s task timed out after %dms (callback hung)", ctx->kernel_id,
+                 (int)TASK_TIMEOUT_MS);
+        if (ctx->crash_event)
+        {
+            SetEvent(ctx->crash_event);
+        }
         return -1;
     }
+    // 线程崩溃退出
+    CloseHandle(node->task.done_event);
+    free(node);
+    ctx->is_crashed = TRUE;
+    return -1;
 }
 void *create_sandbox(const char *dll_path)
 {
