@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2026 LobbyChen -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <Application x:Class="CuckooInterfaceUI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

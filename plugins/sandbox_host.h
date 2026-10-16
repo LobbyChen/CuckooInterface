@@ -1,3 +1,5 @@
+// Copyright (C) 2026 LobbyChen
+// SPDX-License-Identifier: AGPL-3.0-only
 #ifndef SANDBOX_HOST_H
 #define SANDBOX_HOST_H
 

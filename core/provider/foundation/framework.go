@@ -1,3 +1,5 @@
+// Copyright (C) 2026 LobbyChen
+// SPDX-License-Identifier: AGPL-3.0-only
 // Package foundation 提供与插件框架自身生命周期相关的内部事件。
 //
 // 与 system.*（硬件/系统状态）不同，foundation.* 描述的是宿主的运行阶段与

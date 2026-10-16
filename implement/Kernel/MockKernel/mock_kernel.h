@@ -1,3 +1,5 @@
+// Copyright (C) 2026 LobbyChen
+// SPDX-License-Identifier: AGPL-3.0-only
 // mock_kernel.h —— MockKernel 内部状态与接口声明
 //
 // MockKernel 是 CuckooInterface 插件体系的一个最小化内核实现，

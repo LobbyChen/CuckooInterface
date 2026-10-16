@@ -1,4 +1,6 @@
 @echo off
+REM Copyright (C) 2026 LobbyChen
+REM SPDX-License-Identifier: AGPL-3.0-only
 REM ============================================================
 REM  CuckooInterface Auto-Build Script
 REM  Builds: Go core, WPF UI, PythonKernel, LuaKernel

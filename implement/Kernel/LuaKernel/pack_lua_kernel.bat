@@ -1,4 +1,6 @@
 @echo off
+REM Copyright (C) 2026 LobbyChen
+REM SPDX-License-Identifier: AGPL-3.0-only
 setlocal
 set ROOT=%~dp0
 set BUILD=%ROOT%build\Release\binary

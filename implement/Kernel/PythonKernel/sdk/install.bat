@@ -1,4 +1,6 @@
 @echo off
+REM Copyright (C) 2026 LobbyChen
+REM SPDX-License-Identifier: AGPL-3.0-only
 REM ============================================================
 REM  CuckooInterface Python SDK Installer
 REM  Installs cuckoo_sdk package to Python's site-packages

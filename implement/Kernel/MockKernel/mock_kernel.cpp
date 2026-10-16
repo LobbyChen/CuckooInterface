@@ -1,3 +1,5 @@
+// Copyright (C) 2026 LobbyChen
+// SPDX-License-Identifier: AGPL-3.0-only
 // mock_kernel.cpp —— MockKernel 实现
 //
 // 导出 get_cuckoo_kernel_interface()，返回填充好的 CuckooKernelInterface。

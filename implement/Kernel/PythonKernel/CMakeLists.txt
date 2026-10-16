@@ -1,3 +1,5 @@
+# Copyright (C) 2026 LobbyChen
+# SPDX-License-Identifier: AGPL-3.0-only
 # CMakeLists.txt —— PythonKernel 构建脚本
 #
 # 产出：export.dll（CuckooInterface 内核插件入口约定名）
