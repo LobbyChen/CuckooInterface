@@ -6,7 +6,7 @@
 
 > 面向电教场景的**下一代插件平台**
 
-## 警告:本项目目前处于Alpha开发周期，所有核心API都可能有较大幅度变动
+<h2><span style="color: red;">警告:本项目目前处于Alpha开发周期，所有核心API都可能有较大幅度变动</span></h2>
 
 CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插件运行时与宿主管理平台。
 
