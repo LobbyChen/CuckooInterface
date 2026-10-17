@@ -195,7 +195,9 @@ DWORD WINAPI SandboxWorker(LPVOID param)
             break;
 
         case TASK_GET_SETTINGS:
-            if (ctx->iface->get_settings_panel)
+            if (!ctx->iface->free_response)
+                task.result = -2;
+            else if (ctx->iface->get_settings_panel)
                 task.result = ctx->iface->get_settings_panel(
                     task.api, task.out_response);
             else
@@ -203,7 +205,9 @@ DWORD WINAPI SandboxWorker(LPVOID param)
             break;
 
         case TASK_GET_RUNTIME_STATE:
-            if (ctx->iface->get_runtime_state)
+            if (!ctx->iface->free_response)
+                task.result = -2;
+            else if (ctx->iface->get_runtime_state)
                 task.result = ctx->iface->get_runtime_state(
                     task.api, task.out_response);
             else
@@ -211,7 +215,9 @@ DWORD WINAPI SandboxWorker(LPVOID param)
             break;
 
         case TASK_SET_SETTING:
-            if (ctx->iface->set_setting)
+            if (!ctx->iface->free_response)
+                task.result = -2;
+            else if (ctx->iface->set_setting)
                 task.result = ctx->iface->set_setting(
                     task.api,
                     task.setting_key,
@@ -222,7 +228,9 @@ DWORD WINAPI SandboxWorker(LPVOID param)
             break;
 
         case TASK_GET_OPERATIONS:
-            if (ctx->iface->get_operations)
+            if (!ctx->iface->free_response)
+                task.result = -2;
+            else if (ctx->iface->get_operations)
                 task.result = ctx->iface->get_operations(
                     task.api, task.out_response);
             else
@@ -230,7 +238,9 @@ DWORD WINAPI SandboxWorker(LPVOID param)
             break;
 
         case TASK_INVOKE_OPERATION:
-            if (ctx->iface->invoke_operation)
+            if (!ctx->iface->free_response)
+                task.result = -2;
+            else if (ctx->iface->invoke_operation)
                 task.result = ctx->iface->invoke_operation(
                     task.api,
                     task.operation_id,
