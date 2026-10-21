@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	pipe "gopkg.in/natefinch/npipe.v2"
+	winio "github.com/Microsoft/go-winio"
 )
 
 // 与IPC的UI层接口定义
@@ -32,7 +32,7 @@ type CoreIpcInterface struct {
 	once sync.Once
 
 	logger    *logger.Logger
-	listener  *pipe.PipeListener
+	listener  net.Listener
 	startTime time.Time
 }
 
@@ -57,7 +57,11 @@ func (ipc *CoreIpcInterface) check() bool {
 }
 
 func (ipc *CoreIpcInterface) CreatePipe() error {
-	l, err := pipe.Listen(constant.CoreNamePipe)
+	var pipeConfig *winio.PipeConfig
+	if descriptor := config.CorePipeSecurityDescriptor(); descriptor != "" {
+		pipeConfig = &winio.PipeConfig{SecurityDescriptor: descriptor}
+	}
+	l, err := winio.ListenPipe(constant.CoreNamePipe, pipeConfig)
 	if err != nil {
 		return err
 	}
@@ -245,6 +249,19 @@ func plugTypeToString(t constant.PlugType) string {
 		return "active"
 	default:
 		return "unknown"
+	}
+}
+
+func plugTypeFolder(t constant.PlugType) string {
+	switch t {
+	case constant.KERNEL:
+		return "Kernel"
+	case constant.BASE:
+		return "Base"
+	case constant.ACTIVE:
+		return "Active"
+	default:
+		return "Unknown"
 	}
 }
 
@@ -463,8 +480,12 @@ func (ipc *CoreIpcInterface) handleInstallPlugin(params json.RawMessage) (json.R
 	if !utils.IsFileExist(p.Path) {
 		return nil, fmt.Errorf("file %s not exist", p.Path)
 	}
-	// 拷贝到插件类型文件夹，防止插件加载失败
-	if err := utils.CopyFile(p.Path, filepath.Join(constant.UserFolder, plugTypeToString(plugType), filepath.Base(p.Path))); err != nil {
+	// 拷贝到插件根目录下的类型文件夹，防止插件加载失败
+	pluginRoot := config.GetPluginRoot()
+	if err := config.EnsurePluginRoot(pluginRoot); err != nil {
+		return nil, fmt.Errorf("prepare plugin root failed: %w", err)
+	}
+	if err := utils.CopyFile(p.Path, filepath.Join(pluginRoot, plugTypeFolder(plugType), filepath.Base(p.Path))); err != nil {
 		return nil, err
 	}
 	if err := ipc.pfm.ExtractAndLoadExternalPlugin(p.Path, plugType); err != nil {
@@ -590,8 +611,8 @@ func (ipc *CoreIpcInterface) handleSaveSettings(params json.RawMessage) (json.Ra
 	if err := json.Unmarshal(params, &values); err != nil {
 		return nil, fmt.Errorf("invalid settings payload: %w", err)
 	}
-	config.SaveSettings(values)
-	return json.Marshal(true)
+	result := config.SaveSettings(values)
+	return json.Marshal(result)
 }
 
 // 运行时

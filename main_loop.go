@@ -13,6 +13,7 @@ import (
 	"CuckooInterface/core/provider/foundation"
 	"CuckooInterface/core/provider/system/disk"
 	"CuckooInterface/core/runtime_manager"
+	"CuckooInterface/core/service"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"context"
@@ -24,6 +25,11 @@ import (
 
 // RunMainLoop 实现 Normal 模式的核心主循环
 func RunMainLoop() {
+	runMainLoop(context.Background(), false)
+}
+
+// runMainLoop 是 Core 的实际主循环；ctx 用于 Windows 服务停止时触发优雅退出。
+func runMainLoop(ctx context.Context, isService bool) {
 	// 初始化配置管理器
 	// 加载配置
 	cfgManager := config.NewCfgManager()
@@ -49,11 +55,31 @@ func RunMainLoop() {
 		ConsoleOutput: true,
 		CacheSize:     1000,
 	})
-	log.Info("CuckooInterface Core starting in Normal mode...")
+	mode := "Normal"
+	if isService {
+		mode = "Service"
+	}
+	log.Infof("CuckooInterface Core starting in %s mode...", mode)
 
 	// 初始化核心工作目录结构
 	if err := utils.InitFolders(constant.Folders); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to initialize core folders: %v", err))
+	}
+
+	// 开机自启动是当前用户注册表项；服务进程运行在系统账户下，不在此处理。
+	if !isService {
+		if err := utils.SetAutoStartForSID(globalCfg.ServiceUserSID, globalCfg.AutoStart); err != nil {
+			log.Warnf("Failed to reconcile autostart setting: %v", err)
+		} else if globalCfg.AutoStart {
+			log.Info("Autostart is enabled (silent, no UI)")
+		}
+	}
+	if globalCfg.ServiceMode {
+		if installed, err := service.IsInstalled(); err != nil {
+			log.Warnf("Failed to query Core service: %v", err)
+		} else if !installed {
+			log.Warnf("Service mode is enabled in config, but the Core service is not installed")
+		}
 	}
 
 	// 初始化事件总线
@@ -129,8 +155,8 @@ func RunMainLoop() {
 	// 扫描、解压并加载插件
 	loadPlugins(pfm, &km, pm, log, cfgManager)
 
-	// 阻塞等待退出信号或崩溃
-	waitForShutdown(&km, log, internalEventBus)
+	// 阻塞等待退出信号、服务停止请求或崩溃
+	waitForShutdown(ctx, &km, log, internalEventBus)
 }
 
 // registerInternalEvent 注册一个内部事件源，并把注册过程中的错误记入日志。
@@ -142,7 +168,13 @@ func registerInternalEvent(iem *event.InternalEventManager, ev provider.Internal
 
 // loadPlugins 负责从磁盘扫描、解压并加载所有类型的插件
 func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.KernelManager, pm *plugin_manager.PluginManager, log *logger.Logger, cfgManager *config.CfgManager) {
-	userDir := utils.GetFolderPath(constant.UserFolder)
+	coreCfg := config.GetCoreConfig()
+	userDir := config.GetPluginRoot()
+	if err := config.EnsurePluginRoot(userDir); err != nil {
+		log.Errorf("Failed to prepare plugin root [%s]: %v; falling back to default user directory", userDir, err)
+		userDir = utils.GetFolderPath(constant.UserFolder)
+	}
+	log.Infof("Using plugin root: %s", userDir)
 
 	// 解压用户目录下的所有插件到 runtime/plugins 目录
 	count, err := pfm.UnZipAllPlugins(userDir)
@@ -168,6 +200,10 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 	for _, kf := range kernelFiles {
 		if err := km.LoadSingleKernel(kf, ctx); err != nil {
 			log.Errorf("Failed to load kernel [%s]: %v", kf.Name(), err)
+			if !coreCfg.ContinueOnError {
+				log.Warn("continueOnError is disabled; stopping kernel loading")
+				break
+			}
 			continue
 		}
 		kernels := km.GetKernelPlugins()
@@ -175,6 +211,10 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 			targetKernel := kernels[len(kernels)-1]
 			if initErr := <-km.InitSingleKernelAsync(targetKernel); initErr != nil {
 				log.Errorf("Failed to init kernel [%s]: %v", kf.Name(), initErr)
+				if !coreCfg.ContinueOnError {
+					log.Warn("continueOnError is disabled; stopping kernel loading")
+					break
+				}
 			}
 		}
 	}
@@ -182,29 +222,42 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 	// 启动所有已初始化 Kernel 的事件循环
 	km.StartAllLoops()
 
+	if !coreCfg.AutoLoadPlugins {
+		log.Info("Auto-load plugins is disabled; Base/Active plugins will not be loaded automatically")
+		return
+	}
+
 	// 自动加载 Base 和 Active 插件
 	allPlugins := append([]*plugin_manager.SinglePluginFile{}, pfm.GetBasePlugins()...)
 	allPlugins = append(allPlugins, pfm.GetActivePlugins()...)
 	for _, pf := range allPlugins {
 		if err := pm.LoadPlugin(pf); err != nil {
 			log.Errorf("Failed to auto-load plugin [%s]: %v", pf.Name(), err)
-		} else {
-			// 为成功加载的插件注册配置文件占位。
-			if err := cfgManager.RegisterConfig(pf.Meta.ID); err != nil {
-				log.Warnf("Failed to register config for plugin [%s]: %v", pf.Name(), err)
+			if !coreCfg.ContinueOnError {
+				log.Warn("continueOnError is disabled; stopping plugin loading")
+				break
 			}
-			log.Infof("Auto-loaded plugin [%s]", pf.Name())
+			continue
 		}
+		// 为成功加载的插件注册配置文件占位。
+		if err := cfgManager.RegisterConfig(pf.Meta.ID); err != nil {
+			log.Warnf("Failed to register config for plugin [%s]: %v", pf.Name(), err)
+		}
+		log.Infof("Auto-loaded plugin [%s]", pf.Name())
 	}
 }
 
-// waitForShutdown 阻塞主协程，直到收到操作系统的终止信号
-func waitForShutdown(km *plugin_manager.KernelManager, log *logger.Logger, iem *event.InternalEventManager) {
+// waitForShutdown 阻塞主协程，直到收到操作系统终止信号或服务停止请求。
+func waitForShutdown(ctx context.Context, km *plugin_manager.KernelManager, log *logger.Logger, iem *event.InternalEventManager) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	sig := <-quit
-	log.Infof("Received shutdown signal: %v. Cleaning up...", sig)
+	select {
+	case sig := <-quit:
+		log.Infof("Received shutdown signal: %v. Cleaning up...", sig)
+	case <-ctx.Done():
+		log.Info("Received service stop request. Cleaning up...")
+	}
 
 	// 关闭所有内核运行时环境
 	km.ShutdownAll()

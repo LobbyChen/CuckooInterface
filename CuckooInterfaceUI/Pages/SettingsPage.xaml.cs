@@ -164,7 +164,7 @@ namespace CuckooInterfaceUI.Pages
                         {
                             new Setting
                             {
-                                Key = "fontScale", Name = "字号缩放", Description = "调整界面字体大小比例",
+                                Key = "fontScale", Name = "字号缩放", Description = "缩放整个界面（50% - 200%，立即生效）",
                                 DisplayName = true, DisplayDescription = false,
                                 Editor = new SliderEditor { Min = 50, Max = 200, Step = 5, Unit = "%" },
                                 Value = Convert.ToDouble(Get("fontScale", 100.0)),
@@ -552,20 +552,81 @@ namespace CuckooInterfaceUI.Pages
             foreach (var kv in _colorValues)
                 values[kv.Key] = kv.Value;
 
+            var window = Window.GetWindow(this) as MainWindow;
+            var restartTriggered = false;
+
             try
             {
                 SaveSettingsButton.IsEnabled = false;
-                var ok = await _backend.SaveSettingsAsync(values);
-                if (!ok) throw new InvalidOperationException("Core 未确认设置保存成功。");
+                SaveSettingsButton.Content = "保存中…";
 
-                // 实时应用外观设置，无需重启。
-                if (values.TryGetValue("theme", out var themeObj))
-                    ThemeManager.ApplyTheme(themeObj?.ToString() ?? "system");
-                if (values.TryGetValue("accentColor", out var accentObj))
-                    ThemeManager.ApplyAccent(accentObj?.ToString() ?? string.Empty);
+                var result = await _backend.SaveSettingsAsync(values);
+                if (result == null)
+                    throw new InvalidOperationException("Core 未返回设置保存结果。");
+
+                // 外观设置由前端实时应用。
+                if (result.Saved)
+                {
+                    if (values.TryGetValue("theme", out var themeObj))
+                        ThemeManager.ApplyTheme(themeObj?.ToString() ?? "system");
+                    if (values.TryGetValue("accentColor", out var accentObj))
+                        ThemeManager.ApplyAccent(accentObj?.ToString() ?? string.Empty);
+                    if (values.TryGetValue("fontScale", out var fontScaleObj))
+                        ThemeManager.ApplyFontScale(window, Convert.ToDouble(fontScaleObj));
+                }
 
                 SetPendingChanges(false);
-                (Window.GetWindow(this) as MainWindow)?.ShowToast("设置已保存", "修改已经提交到 Core。");
+
+                if (result.Errors.Count > 0 && window != null)
+                {
+                    var panel = new StackPanel { MaxWidth = 460 };
+                    foreach (var error in result.Errors)
+                    {
+                        panel.Children.Add(new TextBlock
+                        {
+                            Text = $"{SettingLabel(error.Key)}：{error.Value}",
+                            FontSize = 12,
+                            TextWrapping = TextWrapping.Wrap,
+                            Foreground = FindResource("TextFillColorPrimaryBrush") as Brush,
+                            Margin = new Thickness(0, 0, 0, 8)
+                        });
+                    }
+                    await window.ShowMessageDialogAsync("部分设置未保存", panel);
+                }
+
+                if (result.RequiresRestart.Count > 0 && window != null)
+                {
+                    var names = string.Join("、", result.RequiresRestart.Select(SettingLabel));
+                    var confirmed = await window.ShowConfirmDialogAsync(
+                        "需要重启 Core",
+                        $"以下设置已保存，重启 Core 后生效：\n{names}\n\n是否立即重启？",
+                        "立即重启",
+                        "稍后");
+
+                    if (confirmed)
+                    {
+                        if (!_backend.IsDaemonConnected)
+                        {
+                            window.ShowToast(
+                                "无法自动重启",
+                                "Daemon 未连接；如使用系统服务，请通过服务管理器重启。",
+                                true);
+                        }
+                        else
+                        {
+                            await _backend.RestartCoreAsync();
+                            window.ShowToast("正在重启 Core", "设置将在连接恢复后生效。");
+                            restartTriggered = true;
+                        }
+                    }
+                }
+                else if (result.Errors.Count == 0)
+                {
+                    window?.ShowToast("设置已保存", "修改已经应用到 Core。");
+                }
+
+                if (!restartTriggered)
+                    await BuildFromBackendAsync();
             }
             catch (Exception ex)
             {
@@ -573,9 +634,28 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
+                SaveSettingsButton.Content = "保存";
                 SaveSettingsButton.IsEnabled = _backend.IsCoreConnected && _hasPendingChanges;
             }
         }
+
+        private static string SettingLabel(string key) => key switch
+        {
+            "autoStart" => "开机自启动",
+            "singleInstance" => "单实例",
+            "serviceMode" => "系统服务",
+            "logLevel" => "日志级别",
+            "logMaxSize" => "日志大小",
+            "logCompress" => "日志压缩",
+            "autoLoadPlugins" => "自动加载插件",
+            "continueOnError" => "加载失败继续",
+            "pluginDir" => "插件目录",
+            "theme" => "主题",
+            "accentColor" => "强调色",
+            "fontScale" => "字号缩放",
+            "config" => "配置",
+            _ => key
+        };
 
         private void SetDisconnectedState()
         {

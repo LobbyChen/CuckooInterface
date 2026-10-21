@@ -158,8 +158,8 @@ namespace CuckooInterfaceUI.Services
         public Task<Dictionary<string, object>> GetAppearanceSettingsAsync(CancellationToken cancellationToken = default) =>
             CallCoreAsync<Dictionary<string, object>>("getAppearanceSettings", null, cancellationToken);
 
-        public Task<bool> SaveSettingsAsync(Dictionary<string, object> values, CancellationToken cancellationToken = default) =>
-            CallCoreAsync<bool>("saveSettings", values, cancellationToken);
+        public Task<SettingsApplyResult> SaveSettingsAsync(Dictionary<string, object> values, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<SettingsApplyResult>("saveSettings", values, cancellationToken);
 
         // ===== 运行时 =====
 

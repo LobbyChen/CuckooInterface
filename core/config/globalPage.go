@@ -3,7 +3,6 @@
 package config
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -38,28 +37,6 @@ func GetAppearanceSettings() map[string]interface{} {
 	return out
 }
 
-// SaveSettings 按 key 更新设置值
-func SaveSettings(values map[string]interface{}) {
-	for k, v := range values {
-		if _, ok := appearanceKeys[k]; ok {
-			appearanceMu.Lock()
-			appearanceValues[k] = v
-			appearanceMu.Unlock()
-			continue
-		}
-
-		settingsMu.Lock()
-		settingValues[k] = v
-		settingsMu.Unlock()
-	}
-
-	// 同步进全局 CoreConfig 并写回 configs/core.json
-	syncSettingsToCoreConfig(values)
-	if err := SaveCoreConfig(); err != nil {
-		fmt.Printf("Warning: failed to persist core config: %v\n", err)
-	}
-}
-
 // syncSettingsToCoreConfig 把本次更新的设置值同步进全局 CoreConfig 结构体。
 // LoadCoreConfig 之前（coreCfg 为 nil）不做任何事。
 func syncSettingsToCoreConfig(values map[string]interface{}) {
@@ -74,6 +51,10 @@ func syncSettingsToCoreConfig(values map[string]interface{}) {
 			coreCfg.AutoStart = toBool(v, coreCfg.AutoStart)
 		case "singleInstance":
 			coreCfg.SingleInstance = toBool(v, coreCfg.SingleInstance)
+		case "serviceMode":
+			coreCfg.ServiceMode = toBool(v, coreCfg.ServiceMode)
+		case "serviceUserSid":
+			coreCfg.ServiceUserSID = toString(v, coreCfg.ServiceUserSID)
 		case "logLevel":
 			coreCfg.LogLevel = toString(v, coreCfg.LogLevel)
 		case "logMaxSize":
@@ -155,7 +136,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "autoStart",
 									Name:               "开机自启动",
-									Description:        "登录系统后自动启动 CuckooInterface",
+									Description:        "登录系统后静默启动守护进程和托盘，不自动显示界面",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -173,13 +154,31 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "singleInstance",
 									Name:               "仅允许运行一个实例",
-									Description:        "新启动的实例将通知旧实例退出",
+									Description:        "新启动的实例将通知旧实例退出（重启 Core 后生效）",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
 								},
 								true,
 								true,
+							),
+						},
+					},
+					{
+						Key:  "service",
+						Name: "系统服务",
+						Settings: []Setting{
+							NewSetting(
+								SettingDefinition{
+									Key:                "serviceMode",
+									Name:               "将 Core 注册为系统服务并开机自启",
+									Description:        "需要管理员权限；注册后将在下次开机自动启动 Core（系统账户后台运行，不显示界面），当前 Core 不受影响",
+									DisplayName:        true,
+									DisplayDescription: true,
+									Editor:             SwitchEditor{},
+								},
+								false,
+								false,
 							),
 						},
 					},
@@ -199,7 +198,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "logLevel",
 									Name:               "日志级别",
-									Description:        "控制日志输出的详细程度",
+									Description:        "控制日志输出的详细程度（立即生效）",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor: SelectEditor{
@@ -224,7 +223,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "logMaxSize",
 									Name:               "单文件最大大小",
-									Description:        "当日志文件超过此大小时进行轮转",
+									Description:        "当日志文件超过此大小时进行轮转（立即生效）",
 									DisplayName:        true,
 									DisplayDescription: false,
 									Editor: SliderEditor{
@@ -247,7 +246,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "logCompress",
 									Name:               "压缩旧日志",
-									Description:        "对超过保留天数的日志文件进行压缩以节省空间",
+									Description:        "对超过保留天数的日志文件进行压缩以节省空间（立即生效）",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -273,7 +272,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "autoLoadPlugins",
 									Name:               "启动时自动加载插件",
-									Description:        "程序启动后自动扫描并加载所有已安装插件",
+									Description:        "启动时自动加载 Base/Active 插件（重启 Core 后生效）",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -285,7 +284,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "continueOnError",
 									Name:               "加载失败时继续",
-									Description:        "某个插件加载失败时不中断整体启动流程",
+									Description:        "某个插件加载失败时不中断整体启动流程（重启 Core 后生效）",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -303,10 +302,10 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "pluginDir",
 									Name:               "插件目录路径",
-									Description:        "存放插件文件的文件夹路径",
+									Description:        "留空使用 user 目录；修改后重启 Core 生效",
 									DisplayName:        true,
-									DisplayDescription: false,
-									Editor:             TextEditor{ReadOnly: true},
+									DisplayDescription: true,
+									Editor:             TextEditor{ReadOnly: true, Placeholder: "留空使用默认 user 目录"},
 									Actions: []SettingAction{
 										{
 											Key:  "browsePluginDir",

@@ -3,6 +3,7 @@
 package runtime_manager
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -43,6 +44,7 @@ func (m *Manager) loadConfig() error {
 	data, err := os.ReadFile(m.cfgPath)
 	switch {
 	case err == nil:
+		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			cfg = defaultConfig()
 			resultErr = fmt.Errorf("parse %s: %w", m.cfgPath, err)

@@ -3,11 +3,14 @@
 package config
 
 import (
+	"CuckooInterface/core/constant"
 	"CuckooInterface/core/utils"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -29,6 +32,7 @@ func defaultCoreConfig() *CoreConfig {
 	return &CoreConfig{
 		AutoStart:       false,
 		SingleInstance:  true,
+		ServiceMode:     false,
 		LogLevel:        "info",
 		LogMaxSize:      100.0,
 		LogCompress:     true,
@@ -46,8 +50,10 @@ func defaultCoreConfig() *CoreConfig {
 // CoreConfig Core 全局配置结构体，字段与 SettingPanel 中的设置 key 一一对应。
 type CoreConfig struct {
 	// 通用
-	AutoStart      bool `json:"autoStart"`      // 开机自启动
-	SingleInstance bool `json:"singleInstance"` // 仅允许运行一个实例
+	AutoStart      bool   `json:"autoStart"`      // 开机静默自启动
+	SingleInstance bool   `json:"singleInstance"` // 仅允许运行一个实例
+	ServiceMode    bool   `json:"serviceMode"`    // Core 注册为 Windows 服务并自动启动
+	ServiceUserSID string `json:"serviceUserSid"` // 允许访问服务 Core 管道的用户 SID
 
 	// 日志
 	LogLevel    string  `json:"logLevel"`    // debug / info / warn / error
@@ -87,6 +93,7 @@ func LoadCoreConfig(dir string) error {
 			applyCoreConfig(cfg)
 			return fmt.Errorf("failed to read core config: %w", err)
 		}
+		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 		if err := json.Unmarshal(data, cfg); err != nil {
 			applyCoreConfig(defaultCoreConfig())
 			return fmt.Errorf("failed to parse core config %s: %w", fp, err)
@@ -111,6 +118,7 @@ func applyCoreConfig(cfg *CoreConfig) {
 	settingsMu.Lock()
 	settingValues["autoStart"] = cfg.AutoStart
 	settingValues["singleInstance"] = cfg.SingleInstance
+	settingValues["serviceMode"] = cfg.ServiceMode
 	settingValues["logLevel"] = cfg.LogLevel
 	settingValues["logMaxSize"] = cfg.LogMaxSize
 	settingValues["logCompress"] = cfg.LogCompress
@@ -157,4 +165,40 @@ func writeCoreConfigFile(fp string, cfg *CoreConfig) error {
 		return err
 	}
 	return os.WriteFile(fp, data, 0666)
+}
+
+// CorePipeSecurityDescriptor 返回 Core 命名管道的 SDDL。
+// 普通用户模式返回空串（使用默认 ACL）；服务模式下仅额外授权安装服务时的用户 SID。
+func CorePipeSecurityDescriptor() string {
+	sid := strings.TrimSpace(GetCoreConfig().ServiceUserSID)
+	if sid == "" || !strings.HasPrefix(sid, "S-1-") ||
+		strings.ContainsAny(sid, `()\"`) {
+		return ""
+	}
+	return fmt.Sprintf("D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;%s)", sid)
+}
+
+// GetPluginRoot 返回用户插件根目录（包含 Base/Active/Kernel）。
+// 默认使用可执行目录下的 user；配置了 pluginDir 时使用该目录。
+func GetPluginRoot() string {
+	pluginDir := strings.TrimSpace(GetCoreConfig().PluginDir)
+	if pluginDir == "" {
+		return utils.GetFolderPath(constant.UserFolder)
+	}
+	if !filepath.IsAbs(pluginDir) {
+		if base, err := utils.GetExecutableDir(); err == nil {
+			pluginDir = filepath.Join(base, pluginDir)
+		}
+	}
+	return filepath.Clean(pluginDir)
+}
+
+// EnsurePluginRoot 创建插件根目录下的三类插件目录。
+func EnsurePluginRoot(root string) error {
+	for _, name := range []string{"Base", "Active", "Kernel"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0755); err != nil {
+			return err
+		}
+	}
+	return nil
 }

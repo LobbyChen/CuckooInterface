@@ -73,8 +73,11 @@ const (
 const ArgTag = "launch_type"
 
 const (
-	NormalModeArgData = "normal"
-	DameonModeArgData = "dameon"
+	NormalModeArgData       = "normal"
+	DameonModeArgData       = "dameon"
+	ServiceModeArgData      = "service"
+	ServiceInstallArgData   = "service-install"
+	ServiceUninstallArgData = "service-uninstall"
 )
 
 // namepipe定义

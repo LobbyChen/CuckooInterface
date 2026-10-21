@@ -150,6 +150,39 @@ func (c *CachedCore) Len() int {
 	return len(c.state.cache)
 }
 
+// rotatingFileWriter 包装 lumberjack，使日志切割参数可以在运行时安全更新。
+type rotatingFileWriter struct {
+	mu     sync.RWMutex
+	logger *lumberjack.Logger
+}
+
+func newRotatingFileWriter(logger *lumberjack.Logger) *rotatingFileWriter {
+	return &rotatingFileWriter{logger: logger}
+}
+
+func (w *rotatingFileWriter) Write(p []byte) (int, error) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.logger.Write(p)
+}
+
+func (w *rotatingFileWriter) Sync() error { return nil }
+
+func (w *rotatingFileWriter) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.logger.Close()
+}
+
+// Reconfigure 在运行时更新切割参数。Lock 与 Write 的 RLock 互斥，
+// 避免在 lumberjack 写入过程中修改字段。
+func (w *rotatingFileWriter) Reconfigure(maxSize int, compress bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.logger.MaxSize = maxSize
+	w.logger.Compress = compress
+}
+
 // Logger 封装后的日志记录器
 type Logger struct {
 	mu           sync.RWMutex
@@ -159,6 +192,8 @@ type Logger struct {
 	writers      []zapcore.WriteSyncer // 跟踪所有当前的 writer，以便动态添加
 	cores        []zapcore.Core        // 扁平维护所有子 Core，避免 AddWriter 产生嵌套 Tee 树
 	cachedCore   *CachedCore           // 内存缓存 Core
+	level        *zap.AtomicLevel      // 支持运行时调整级别
+	fileWriter   *rotatingFileWriter   // 支持运行时调整切割参数
 }
 
 var (
@@ -223,10 +258,12 @@ func NewLogger(cfg LoggerConfig) *Logger {
 		MaxAge:     cfg.MaxAge,
 		Compress:   cfg.Compress,
 	}
+	rotatingWriter := newRotatingFileWriter(lumberJackLogger)
+	atomicLevel := zap.NewAtomicLevelAt(level)
 
 	// 创建 WriteSyncers
 	var writers []zapcore.WriteSyncer
-	fileWriter := zapcore.AddSync(lumberJackLogger)
+	fileWriter := zapcore.AddSync(rotatingWriter)
 	writers = append(writers, fileWriter)
 
 	if cfg.ConsoleOutput {
@@ -249,7 +286,7 @@ func NewLogger(cfg LoggerConfig) *Logger {
 	fileCore := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderLoggerConfig),
 		fileWriter,
-		level,
+		atomicLevel,
 	)
 	cores = append(cores, fileCore)
 
@@ -260,7 +297,7 @@ func NewLogger(cfg LoggerConfig) *Logger {
 		consoleCore := zapcore.NewCore(
 			zapcore.NewConsoleEncoder(consoleEncoderLoggerConfig),
 			zapcore.AddSync(os.Stdout),
-			level,
+			atomicLevel,
 		)
 		cores = append(cores, consoleCore)
 	}
@@ -270,7 +307,7 @@ func NewLogger(cfg LoggerConfig) *Logger {
 	if cacheSize <= 0 {
 		cacheSize = 1000
 	}
-	cachedCore := NewCachedCore(level, cacheSize)
+	cachedCore := NewCachedCore(atomicLevel, cacheSize)
 	cores = append(cores, cachedCore)
 
 	// 初始化合并的 Core
@@ -287,8 +324,38 @@ func NewLogger(cfg LoggerConfig) *Logger {
 		writers:      writers,
 		cores:        cores,
 		cachedCore:   cachedCore, // 注入缓存 Core
+		level:        &atomicLevel,
+		fileWriter:   rotatingWriter,
 	}
 	return l
+}
+
+// SetLevel 在运行时调整日志级别，立即对所有 Core 生效。
+func (l *Logger) SetLevel(level string) error {
+	var parsed zapcore.Level
+	if err := parsed.UnmarshalText([]byte(level)); err != nil {
+		return fmt.Errorf("invalid log level %q: %w", level, err)
+	}
+	l.level.SetLevel(parsed)
+	l.mu.Lock()
+	l.LoggerConfig.Level = level
+	l.mu.Unlock()
+	return nil
+}
+
+// SetFileRotation 在运行时更新日志文件大小与压缩策略。
+func (l *Logger) SetFileRotation(maxSizeMB int, compress bool) error {
+	if maxSizeMB <= 0 {
+		return fmt.Errorf("log max size must be positive, got %d", maxSizeMB)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.fileWriter != nil {
+		l.fileWriter.Reconfigure(maxSizeMB, compress)
+	}
+	l.LoggerConfig.MaxSize = maxSizeMB
+	l.LoggerConfig.Compress = compress
+	return nil
 }
 
 // AddWriter 动态添加额外的 io.Writer 到日志输出中。
@@ -299,14 +366,7 @@ func (l *Logger) AddWriter(w io.Writer) {
 	newWriter := zapcore.AddSync(w)
 	l.writers = append(l.writers, newWriter)
 
-	// 获取当前 Level
-	level := l.LoggerConfig.Level
-	var lvl zapcore.Level
-	if err := lvl.UnmarshalText([]byte(level)); err != nil {
-		lvl = zapcore.InfoLevel
-	}
-
-	// 为新的 writer 创建一个 Core
+	// 为新的 writer 创建一个 Core，并共享运行时级别。
 	encoderLoggerConfig := zap.NewProductionEncoderConfig()
 	encoderLoggerConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 	encoderLoggerConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -314,7 +374,7 @@ func (l *Logger) AddWriter(w io.Writer) {
 	newCore := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderLoggerConfig),
 		newWriter,
-		lvl,
+		*l.level,
 	)
 
 	// 将新 Core 追加到扁平切片中
@@ -409,12 +469,24 @@ func (l *Logger) With(keysAndValues ...any) *Logger {
 		writers:      l.writers,
 		cores:        l.cores,
 		cachedCore:   l.cachedCore, // 共享同一个 cachedCore，其内部的 With 也会被正确调用
+		level:        l.level,
+		fileWriter:   l.fileWriter,
 	}
 }
 
 // Sync 刷新缓冲区
 func (l *Logger) Sync() error {
 	return l.zapLog.Sync()
+}
+
+// Close 关闭日志文件句柄。
+func (l *Logger) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.fileWriter != nil {
+		return l.fileWriter.Close()
+	}
+	return nil
 }
 
 // GetCachedLogs 获取所有缓存的结构化日志

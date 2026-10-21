@@ -62,6 +62,33 @@ namespace CuckooInterfaceUI.Services
             };
         }
 
+        private static double _currentFontScale = 1.0;
+
+        /// <summary>
+        /// 按百分比缩放整个窗口内容，并同步调整窗口尺寸。
+        /// 范围 50% - 200%。
+        /// </summary>
+        public static void ApplyFontScale(Window? window, double percent)
+        {
+            if (window?.Content is not FrameworkElement root)
+                return;
+
+            var scale = Math.Clamp(percent / 100.0, 0.5, 2.0);
+            if (Math.Abs(scale - _currentFontScale) < 0.001)
+                return;
+
+            root.LayoutTransform = new ScaleTransform(scale, scale);
+
+            if (window.WindowState != WindowState.Maximized)
+            {
+                var ratio = scale / _currentFontScale;
+                window.Width = Math.Max(window.MinWidth, window.Width * ratio);
+                window.Height = Math.Max(window.MinHeight, window.Height * ratio);
+            }
+
+            _currentFontScale = scale;
+        }
+
         /// <summary>
         /// 读取 Windows 注册表判断系统当前是浅色还是深色主题。
         /// 读取失败时默认返回 Dark，与 App.xaml 初始主题保持一致。

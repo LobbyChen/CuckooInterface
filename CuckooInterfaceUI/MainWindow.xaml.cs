@@ -166,11 +166,31 @@ namespace CuckooInterfaceUI
                     ThemeManager.ApplyTheme(themeObj?.ToString() ?? "system");
                 if (values.TryGetValue("accentColor", out var accentObj))
                     ThemeManager.ApplyAccent(accentObj?.ToString() ?? string.Empty);
+                if (values.TryGetValue("fontScale", out var fontScaleObj) &&
+                    double.TryParse(fontScaleObj?.ToString(), out var fontScale))
+                {
+                    ThemeManager.ApplyFontScale(this, fontScale);
+                }
             }
             catch
             {
                 // 拉取失败时忽略，保持当前主题。
             }
+        }
+
+        public async Task ShowMessageDialogAsync(string title, object content)
+        {
+            var dialog = new ContentDialog(RootContentDialogHost)
+            {
+                Title = title,
+                Content = content,
+                CloseButtonText = "关闭",
+                DefaultButton = ContentDialogButton.Close,
+                DialogWidth = 480,
+                DialogMaxWidth = 560,
+                DialogMaxHeight = 460
+            };
+            await dialog.ShowAsync();
         }
 
         public async Task<bool> ShowConfirmDialogAsync(string title, object content, string primaryText, string closeText = "取消", bool danger = false)

@@ -3,6 +3,7 @@ package main
 import (
 	"CuckooInterface/core/constant"
 	"CuckooInterface/core/logger"
+	"CuckooInterface/core/service"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/daemon"
 	"context"
@@ -46,14 +47,26 @@ func RunDaemonLoop() {
 	// 确保 Daemon 单实例运行
 	utils.EnsureSingleInstance(DaemonModePort)
 
+	// 注册为系统服务后，Core 由 SCM 管理，Daemon 不应再拉起第二个 Core。
+	managedByService := service.IsRunning()
+	if managedByService {
+		log.Info("Core is managed by Windows service; daemon will only provide UI/tray")
+	}
+
 	// 定义 Core 生命周期控制函数
 	startCoreFunc := func() error {
+		if service.IsRunning() {
+			return fmt.Errorf("Core 由 Windows 服务管理，请在系统服务中启动")
+		}
 		coreMu.Lock()
 		coreStopped = false
 		coreMu.Unlock()
 		return startCoreProcess(log)
 	}
 	stopCoreFunc := func() error {
+		if service.IsRunning() {
+			return fmt.Errorf("Core 由 Windows 服务管理，请在系统服务中停止")
+		}
 		coreMu.Lock()
 		coreStopped = true
 		coreMu.Unlock()
@@ -73,18 +86,24 @@ func RunDaemonLoop() {
 	go daemonIpc.HandleRequest()
 	log.Infof("Daemon IPC listening on pipe: %s", constant.DaemonNamePipe)
 
-	// 初始拉起 Core 子进程
-	if err := startCoreProcess(log); err != nil {
-		log.Errorf("Failed to start Core initially: %v", err)
+	// 初始拉起 Core 子进程（服务模式下跳过）
+	if !managedByService {
+		if err := startCoreProcess(log); err != nil {
+			log.Errorf("Failed to start Core initially: %v", err)
+		}
 	}
 
-	// 初始拉起 UI 子进程
-	if err := daemon.StartUI(); err != nil {
-		log.Errorf("Failed to start UI initially: %v", err)
+	// 初始拉起 UI 子进程（-no_ui 用于静默开机自启）
+	if daemon.ShouldOpenUI() {
+		if err := daemon.StartUI(); err != nil {
+			log.Errorf("Failed to start UI initially: %v", err)
+		}
+	} else {
+		log.Info("UI auto-start disabled by -no_ui")
 	}
 
 	// 启动 Core 保活协程
-	go coreKeepAliveLoop(log)
+	go coreKeepAliveLoop(log, managedByService)
 
 	// 监听 OS 终止信号，用于优雅退出托盘
 	sigCh := make(chan os.Signal, 1)
@@ -127,6 +146,9 @@ func startCoreProcess(log *logger.Logger) error {
 
 	if coreRunning {
 		return fmt.Errorf("core is already running")
+	}
+	if service.IsRunning() {
+		return fmt.Errorf("core is managed by Windows service")
 	}
 
 	exeDir, err := utils.GetExecutableDir()
@@ -205,7 +227,12 @@ func shouldRestartCore() bool {
 }
 
 // coreKeepAliveLoop 保活协程
-func coreKeepAliveLoop(log *logger.Logger) {
+func coreKeepAliveLoop(log *logger.Logger, managedByService bool) {
+	if managedByService {
+		log.Info("Core keep-alive loop disabled (service-managed Core)")
+		return
+	}
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -215,6 +242,10 @@ func coreKeepAliveLoop(log *logger.Logger) {
 			log.Info("Core keep-alive loop stopped")
 			return
 		case <-ticker.C:
+			if service.IsRunning() {
+				// 服务可能在 Daemon 运行期间被启用，交给 SCM 管理。
+				continue
+			}
 			if shouldRestartCore() {
 				log.Info("Core process not running, attempting restart...")
 				if err := startCoreProcess(log); err != nil {

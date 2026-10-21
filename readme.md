@@ -125,7 +125,9 @@ CuckooInterface/
 │   │   └── plugin_manager.go    # Base / Active 插件加载与事件注册
 │   ├── runtime_manager/         # 运行时统一管理
 │   │   ├── runtime_manager.go   # Kernel 状态聚合 / 控制面调用 / Python 环境探测
+│   │   ├── selection_panel.go   # 动态运行时选择面板
 │   │   └── config.go            # configs/runtimes.json 运行时偏好
+│   ├── service/                 # Windows 服务注册 / 卸载 / 状态查询
 │   └── utils/                   # 通用工具
 │       ├── buffer.go            # 字节缓冲
 │       ├── json.go              # JSON 辅助
@@ -303,6 +305,16 @@ PythonKernel 通过 CPython 稳定 ABI 动态加载 `python3.dll`，因此同一
 ### Lua 运行时
 
 Lua 5.5.1 VM 直接静态链接进 `export.dll`，目标机器无需安装 Lua 或额外 VC 运行库。
+
+---
+
+## ⚙️ 设置项行为
+
+- **开机自启动**：写入当前用户 `Run` 注册表项，使用 `-no_ui` 静默启动守护进程和托盘，不自动打开 UI。
+- **将 Core 注册为系统服务并开机自启**：需要管理员权限。注册后服务以系统账户在后台运行 Core，开机自动启动且不显示界面；命名管道仅授权安装服务时的用户 SID、SYSTEM 与 Administrators。
+- **日志级别 / 单文件大小 / 压缩**：修改后立即生效。
+- **单实例 / 启动时自动加载插件 / 加载失败继续 / 插件目录**：保存后需重启 Core 生效。
+- **主题 / 强调色 / 字号缩放**：UI 立即应用。
 
 ---
 
