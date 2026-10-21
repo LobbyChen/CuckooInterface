@@ -3,6 +3,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(CuckooLuaKernel LANGUAGES C CXX)
 
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -66,7 +70,16 @@ set_target_properties(cuckoo_lua_kernel PROPERTIES
 )
 
 if(MSVC)
+  # 静态链接 CRT，避免目标机器缺少 VCRUNTIME140.dll。
+  set_target_properties(cuckoo_lua_kernel PROPERTIES
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+  )
   target_compile_options(cuckoo_lua_kernel PRIVATE /W4 /EHsc /utf-8)
+else()
+  # MinGW：静态链接 libgcc/libstdc++，Kernel 可单文件分发。
+  target_link_options(cuckoo_lua_kernel PRIVATE
+    -static -static-libgcc -static-libstdc++ -s
+  )
 endif()
 
 add_custom_command(TARGET cuckoo_lua_kernel POST_BUILD

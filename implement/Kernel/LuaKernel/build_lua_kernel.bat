@@ -20,8 +20,7 @@ if errorlevel 1 (
 )
 
 rem ------------------------------------------------------------
-rem Prepare a C/C++ compiler environment.
-rem Ninja itself is only a build generator; it is NOT a compiler.
+rem Prefer MSVC when available; otherwise fall back to MinGW GCC.
 rem ------------------------------------------------------------
 where cl >nul 2>&1
 if errorlevel 1 (
@@ -40,25 +39,46 @@ if errorlevel 1 (
 
 where cl >nul 2>&1
 if errorlevel 1 (
-  echo.
-  echo [LuaKernel] ERROR: No usable C/C++ compiler was found.
-  echo.
-  echo Install Visual Studio Build Tools with:
-  echo   Desktop development with C++
-  echo   MSVC C++ build tools
-  echo   Windows SDK
-  echo.
-  echo Then run this script from a normal PowerShell again.
-  echo A Developer PowerShell for VS also works.
-  exit /b 1
+  where gcc >nul 2>&1
+  if errorlevel 1 (
+    echo.
+    echo [LuaKernel] ERROR: No usable C/C++ compiler was found.
+    echo.
+    echo Install Visual Studio Build Tools with "Desktop development with C++"
+    echo or MinGW-w64 with gcc/g++ in PATH.
+    exit /b 1
+  )
+
+  echo [LuaKernel] MSVC not found; using MinGW GCC.
+  if exist "%BUILD%\CMakeCache.txt" rmdir /s /q "%BUILD%" >nul 2>&1
+  pushd "%ROOT%"
+  where ninja >nul 2>&1
+  if not errorlevel 1 (
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+  ) else (
+    cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+  )
+  if errorlevel 1 (
+    echo [LuaKernel] CMake configure failed.
+    popd
+    exit /b 1
+  )
+  cmake --build build --config Release --parallel
+  if errorlevel 1 (
+    echo [LuaKernel] Build failed.
+    popd
+    exit /b 1
+  )
+  popd
+  goto :done
 )
 
-echo [LuaKernel] C compiler:
+echo [LuaKernel] Using MSVC:
 where cl
 
 rem ------------------------------------------------------------
-rem Do not pass -A to Ninja. Also clear a previous generator cache
-rem so an earlier failed Ninja/VS configure cannot poison this build.
+rem Clear a previous generator cache so an earlier failed
+rem configure cannot poison this build.
 rem ------------------------------------------------------------
 if exist "%BUILD%\CMakeCache.txt" (
   echo [LuaKernel] Removing previous CMake cache...
@@ -90,6 +110,7 @@ if errorlevel 1 (
 )
 popd
 
+:done
 echo [LuaKernel] Build complete.
 if exist "%BUILD%\Release\binary\export.dll" (
   echo [LuaKernel] Output: %BUILD%\Release\binary\export.dll

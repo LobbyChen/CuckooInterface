@@ -57,6 +57,14 @@ namespace CuckooInterfaceUI.Models
             _ => "未知"
         };
 
+        public string RuntimeText => RuntimeType.ToLowerInvariant() switch
+        {
+            "python" => "Python",
+            "lua" => "Lua",
+            "" => "—",
+            _ => RuntimeType
+        };
+
         /// <summary>
         /// 是否允许用户手动启停。Kernel 由系统统一管理，不支持手动 toggle。
         /// </summary>

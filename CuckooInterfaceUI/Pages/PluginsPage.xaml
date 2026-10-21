@@ -109,15 +109,25 @@
                                         </StackPanel>
                                     </DockPanel>
 
-                                    <Border Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                            CornerRadius="4"
-                                            Padding="6,2"
-                                            HorizontalAlignment="Left"
-                                            Margin="0,0,0,8">
-                                        <TextBlock Text="{Binding TypeText}"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    </Border>
+                                    <StackPanel Orientation="Horizontal"
+                                                Margin="0,0,0,8">
+                                        <Border Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                                CornerRadius="4"
+                                                Padding="6,2">
+                                            <TextBlock Text="{Binding TypeText}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </Border>
+                                        <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                CornerRadius="4"
+                                                Padding="6,2"
+                                                Margin="6,0,0,0"
+                                                ToolTip="插件运行时">
+                                            <TextBlock Text="{Binding RuntimeText}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </Border>
+                                    </StackPanel>
 
                                     <TextBlock Text="{Binding Description}"
                                                FontSize="12"
@@ -146,6 +156,7 @@
                                                        Appearance="Secondary"
                                                        Padding="6"
                                                        Margin="0,0,4,0"
+                                                       ToolTip="插件设置 / 运行时详情"
                                                        Tag="{Binding}"
                                                        Click="PluginSettings_Click" />
                                             <ui:Button Icon="{ui:SymbolIcon Delete24}"

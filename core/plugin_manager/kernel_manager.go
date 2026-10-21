@@ -17,9 +17,24 @@ const kernelLoadTimeout = 30 * time.Second
 
 // kernelEntry 记录一个已加载 Kernel 的状态
 type kernelEntry struct {
-	kernel *plugins.Kernel
-	id     string // kernel 唯一标识
-	isInit bool
+	kernel      *plugins.Kernel
+	id          string // kernel 唯一标识
+	isInit      bool
+	loopStarted bool
+	dir         string // 插件解压目录
+	initErr     error
+	loopErr     error
+}
+
+// KernelRuntimeEntry 是供 RuntimeManager 等上层组件只读查询的 Kernel 状态快照。
+type KernelRuntimeEntry struct {
+	Kernel      *plugins.Kernel
+	ID          string
+	Initialized bool
+	LoopStarted bool
+	Dir         string
+	InitError   string
+	LoopError   string
 }
 
 type KernelManager struct {
@@ -82,12 +97,48 @@ func (km *KernelManager) LoadSingleKernel(kernel *SinglePluginFile, ctx context.
 	// 读取 kernel ID，供 IntoLoopReport 分发使用
 	kid, _, _, _ := res.k.Meta()
 	km.lock.Lock()
-	km.kernels = append(km.kernels, kernelEntry{kernel: res.k, id: kid, isInit: false})
+	km.kernels = append(km.kernels, kernelEntry{kernel: res.k, id: kid, isInit: false, dir: kernel.dir})
 	km.lock.Unlock()
 	return nil
 }
 
-// 获取所有核心,不论是否加载
+// ListKernelEntries 返回 Kernel 状态快照，供运行时管理使用。
+func (km *KernelManager) ListKernelEntries() []KernelRuntimeEntry {
+	km.lock.Lock()
+	defer km.lock.Unlock()
+	ret := make([]KernelRuntimeEntry, 0, len(km.kernels))
+	for _, k := range km.kernels {
+		entry := KernelRuntimeEntry{
+			Kernel:      k.kernel,
+			ID:          k.id,
+			Initialized: k.isInit,
+			LoopStarted: k.loopStarted,
+			Dir:         k.dir,
+		}
+		if k.initErr != nil {
+			entry.InitError = k.initErr.Error()
+		}
+		if k.loopErr != nil {
+			entry.LoopError = k.loopErr.Error()
+		}
+		ret = append(ret, entry)
+	}
+	return ret
+}
+
+// FindKernel 按 Kernel ID 查找已加载的 Kernel。
+func (km *KernelManager) FindKernel(id string) (*plugins.Kernel, bool) {
+	km.lock.Lock()
+	defer km.lock.Unlock()
+	for _, k := range km.kernels {
+		if k.id == id {
+			return k.kernel, true
+		}
+	}
+	return nil, false
+}
+
+// GetKernelPlugins 获取所有核心,不论是否加载
 func (km *KernelManager) GetKernelPlugins() []*plugins.Kernel {
 	km.lock.Lock()
 	defer km.lock.Unlock()
@@ -151,6 +202,7 @@ func (km *KernelManager) InitSingleKernelAsync(kernel *plugins.Kernel) <-chan er
 		for i, k := range km.kernels {
 			if k.kernel == kernel {
 				km.kernels[i].isInit = err == nil
+				km.kernels[i].initErr = err
 				break
 			}
 		}
@@ -227,12 +279,24 @@ func (km *KernelManager) StartAllLoops() {
 	km.lock.Unlock()
 	for _, k := range kernels {
 		func() {
+			var loopErr error
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("[KernelManager] Kernel loop panicked: %v\n", r)
+					loopErr = fmt.Errorf("kernel loop panicked: %v", r)
+					fmt.Printf("[KernelManager] %v\n", loopErr)
 				}
+				km.lock.Lock()
+				for i, entry := range km.kernels {
+					if entry.kernel == k {
+						km.kernels[i].loopStarted = loopErr == nil
+						km.kernels[i].loopErr = loopErr
+						break
+					}
+				}
+				km.lock.Unlock()
 			}()
 			if err := k.StartLoop(); err != nil {
+				loopErr = err
 				fmt.Printf("[KernelManager] Failed to start kernel loop: %v\n", err)
 			}
 		}()

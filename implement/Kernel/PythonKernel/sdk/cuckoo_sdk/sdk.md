@@ -18,7 +18,7 @@ Python 插件开发工具包，为 Python 运行时插件提供事件订阅、�
 
 在本地开发 Python 插件前，需要将 `cuckoo_sdk` 安装到 Python 环境中，或拷贝到 CuckooInterface 的安装目录下。这样编辑器才能正确识别和补全 SDK API，插件也能在本地独立运行测试。
 
-> **Python 版本兼容性**：`cuckoo_sdk` 是纯 Python 代码，不依赖特定 CPython 版本，本地开发可使用任意 Python 3.x。但 CuckooInterface 运行时由 **PythonKernel 内嵌的 CPython** 执行插件，该内嵌版本取决于构建 PythonKernel 时所用的 Python 版本（例如构建时用 Python 3.11，则运行时为 3.11）。若本地开发版本与内嵌版本不一致，标准库和第三方包的可用性可能存在差异，建议尽量保持一致。
+> **Python 版本兼容性**：`cuckoo_sdk` 是纯 Python 代码，本地开发可使用任意 Python 3.x。PythonKernel 不内嵌 Python，而是在目标机器上发现并使用已安装的 **64 位 CPython 3.8+**。运行时页面会列出检测到的 Python 安装，用户可以选择 Python Kernel 要使用的一份；选择保存在 `configs/runtimes.json`，重启 Core 后生效。
 
 ### 方式一：使用安装脚本（推荐）
 
@@ -48,7 +48,7 @@ from cuckoo_sdk import on_event, emit_event, log_info
 | CuckooInterface 安装目录的 `plugins/PythonKernel/sdk/` 下 | 随内核分发，运行时由内核自动加入 `sys.path` |
 | 插件自身目录内 | 仅当前插件可用，需确保 `cuckoo_sdk` 与 `main.py` 同级 |
 
-> **注意**：CuckooInterface 运行时，PythonKernel 会自动将内核自带的 SDK 加入 `sys.path`，因此插件在 CuckooInterface 中运行无需额外安装。安装 SDK 仅用于本地开发和独立测试。
+> **注意**：CuckooInterface 运行时，PythonKernel 会自动将内核自带的 SDK 加入 `sys.path`，因此插件在 CuckooInterface 中运行无需额外安装 SDK。安装 SDK 仅用于本地开发和独立测试。插件可用的第三方包取决于运行时页面中选中的那份 Python 安装。
 
 ### 卸载
 

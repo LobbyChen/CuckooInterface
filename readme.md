@@ -37,6 +37,8 @@ CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插�
 - **CGo + C ABI 桥接**：Go Core 与 Kernel / 插件运行时之间通过 Host API 交互
 - **事件驱动架构**：内置 EventBus，支持事件提供、监听、异步分发与最近事件缓冲
 - **插件热管理**：扫描、解压、加载、卸载、删除、外部安装
+- **RuntimeManager**：统一管理 Kernel 运行时状态、动态设置面板、运行时操作与环境偏好
+- **可管理的运行时**：RuntimeManager 发现目标机器上的 CPython，用户可在运行时页面选择 Python Kernel 使用哪一份安装；Lua Kernel 静态链接 Lua VM
 - **配置系统**：支持插件独立配置，并提供类型化 Setting / 动态 UI 描述模型
 - **双 IPC 通道**：Core 与 Daemon 分别通过 Windows Named Pipe 对外提供控制接口
 - **Daemon 守护**：负责 Core 生命周期、保活与系统托盘
@@ -96,7 +98,7 @@ CuckooInterface/
 ├── main_loop.go                 # Core 主循环（Normal 模式）
 ├── daemon_loop.go               # Daemon 主循环（托盘 / Core 保活）
 ├── constant.go                  # 进程间通信端口常量
-├── build.bat                    # 一键构建脚本（Go Core + WPF UI + PythonKernel）
+├── build.bat                    # 一键构建脚本（Go Core + WPF UI + Kernel）
 ├── go.mod / go.sum              # Go 模块依赖
 ├── icon.ico / icon.png / icon.svg
 ├── LICENSE.txt
@@ -121,6 +123,9 @@ CuckooInterface/
 │   │   ├── kernel_manager.go    # Kernel 加载 / 初始化 / 生命周期
 │   │   ├── plugin_file_manager.go  # 插件扫描 / 解压 / 文件管理
 │   │   └── plugin_manager.go    # Base / Active 插件加载与事件注册
+│   ├── runtime_manager/         # 运行时统一管理
+│   │   ├── runtime_manager.go   # Kernel 状态聚合 / 控制面调用 / Python 环境探测
+│   │   └── config.go            # configs/runtimes.json 运行时偏好
 │   └── utils/                   # 通用工具
 │       ├── buffer.go            # 字节缓冲
 │       ├── json.go              # JSON 辅助
@@ -158,6 +163,7 @@ CuckooInterface/
 │       │
 │       └── PythonKernel/        # CPython 运行时内核
 │           ├── python_kernel.h / python_kernel.cpp
+│           ├── python_runtime.h / python_runtime.cpp  # 动态加载 CPython 稳定 ABI
 │           ├── json_utils.h
 │           ├── CMakeLists.txt
 │           ├── build.bat
@@ -186,6 +192,7 @@ CuckooInterface/
     ├── Pages/                   # 功能页面
     │   ├── HomePage.xaml        # 概览
     │   ├── PluginsPage.xaml     # 插件管理
+    │   ├── RuntimesPage.xaml    # 运行时管理
     │   ├── ConfigPage.xaml      # 配置
     │   ├── EventsPage.xaml      # 事件记录
     │   ├── LogsPage.xaml        # 日志
@@ -212,9 +219,11 @@ CuckooInterface/
 build.bat
 ```
 
-前置依赖：`go`、`dotnet`、`cmake`、`python` 均在 PATH 中。
+前置依赖：`go`、`dotnet`、`cmake`、`powershell` 以及 MSVC 或 MinGW 工具链。
 
-产物输出到 `bin/` 目录，包含 `CuckooInterface.exe`、WPF UI 文件以及 `user/Kernel/PythonKernel.zip`。
+PythonKernel 不再需要构建机的 Python 开发包，Kernel 包也不包含 Python 运行时。运行 Python 插件的目标机器需要安装 **64 位 CPython 3.8+**，安装位置可在运行时页面中选择。
+
+产物输出到 `bin/` 目录，包含 `CuckooInterface.exe`、WPF UI 文件以及 `user/Kernel/PythonKernel.zip`、`user/Kernel/LuaKernel.zip`。
 
 ### 构建 Go Core
 
@@ -267,6 +276,35 @@ Daemon 模式负责：
 5. 维持 Core
 6. 退出时统一清理
 
+
+## ⚙️ 运行时管理
+
+Core 中的 `RuntimeManager` 统一聚合每个 Kernel 的运行状态，并通过 Runtime Control Plane 调用 Kernel 的：
+
+- `get_runtime_state`：运行时版本、目录、插件数量
+- `get_settings_panel` / `set_setting`：Kernel 自定义设置
+- `get_operations` / `invoke_operation`：Kernel 自定义操作（如 `runtime.probe`）
+
+WPF 的“运行时”页面会展示以上信息，并提供 Python 运行时环境选择。
+
+### Python 运行时
+
+PythonKernel 通过 CPython 稳定 ABI 动态加载 `python3.dll`，因此同一个 `export.dll` 可以运行在任意 CPython 3.x 上，不再与构建机 Python 版本绑定,也不随包分发 Python。
+
+运行时页面由 RuntimeManager 动态生成（与设置页相同的 `SettingPanel` 模型），会从以下位置发现 Python：
+
+1. 用户在运行时页面手动选择的安装（`configs/runtimes.json`）
+2. 系统 PATH
+3. Windows `py` 启动器
+4. 注册表中的 Python 安装
+
+页面会显示每个安装的版本、架构、路径与兼容状态；仅 64 位 CPython 3.8+ 可被选择。选择后重启 Core 生效。Python Kernel 在运行时按“用户选择 → PATH → 注册表”的顺序定位 CPython；若机器上没有可用 Python，Kernel 会返回明确的安装提示。
+
+### Lua 运行时
+
+Lua 5.5.1 VM 直接静态链接进 `export.dll`，目标机器无需安装 Lua 或额外 VC 运行库。
+
+---
 
 ## 🧪 一个插件应该如何工作
 

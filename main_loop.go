@@ -12,6 +12,7 @@ import (
 	"CuckooInterface/core/provider"
 	"CuckooInterface/core/provider/foundation"
 	"CuckooInterface/core/provider/system/disk"
+	"CuckooInterface/core/runtime_manager"
 	"CuckooInterface/core/utils"
 	"CuckooInterface/plugins"
 	"context"
@@ -100,6 +101,9 @@ func RunMainLoop() {
 	km.InjectPluginFileManager(pfm)
 	km.InjectHostAPI(hostAPI)
 	pm := plugin_manager.NewPluginManager(log, &km, pfm, eventBus)
+	// RuntimeManager 负责 Kernel 运行时状态、控制面与运行环境偏好。
+	// 必须在 loadPlugins 之前创建，以便把 Python 运行时偏好写入进程环境。
+	rm := runtime_manager.New(&km, pm, log, cfgPath)
 	// 插件装载状态变化时广播 foundation.plugin.loaded / unloaded
 	pm.SetPluginEventHook(func(loaded bool, meta plugins.PluginMetaData, typo constant.PlugType) {
 		if loaded {
@@ -111,7 +115,7 @@ func RunMainLoop() {
 
 	// 创建并启动 IPC 命名管道服务
 	ipcBridge := &IPC.CoreIpcInterface{}
-	ipcBridge.Init(&km, pfm, pm, eventBus, log)
+	ipcBridge.Init(&km, pfm, pm, rm, eventBus, log)
 
 	if err := ipcBridge.CreatePipe(); err != nil {
 		log.Fatalf("Failed to create Core IPC pipe: %v", err)

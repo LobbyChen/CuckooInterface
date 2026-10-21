@@ -200,6 +200,15 @@ namespace CuckooInterfaceUI.Pages
 
         private void PluginSettings_Click(object sender, RoutedEventArgs e)
         {
+            if (sender is FrameworkElement element &&
+                element.Tag is PluginInfo plugin &&
+                plugin.Type == PluginType.Kernel)
+            {
+                RuntimesPage.PendingKernelId = plugin.Id;
+                NavigateTo(typeof(RuntimesPage));
+                return;
+            }
+
             NavigateTo(typeof(ConfigPage));
         }
 

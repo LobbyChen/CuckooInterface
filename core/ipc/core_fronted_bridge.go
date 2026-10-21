@@ -8,6 +8,7 @@ import (
 	"CuckooInterface/core/event"
 	"CuckooInterface/core/logger"
 	"CuckooInterface/core/plugin_manager"
+	"CuckooInterface/core/runtime_manager"
 	"CuckooInterface/core/utils"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,7 @@ type CoreIpcInterface struct {
 	km   *plugin_manager.KernelManager
 	pfm  *plugin_manager.PluginFileManager
 	pm   *plugin_manager.PluginManager
+	rm   *runtime_manager.Manager
 	ebus *event.EventBus
 	once sync.Once
 
@@ -35,11 +37,12 @@ type CoreIpcInterface struct {
 }
 
 // Init 注入核心组件依赖（仅生效一次）
-func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, ebus *event.EventBus, logger *logger.Logger) {
+func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, rm *runtime_manager.Manager, ebus *event.EventBus, logger *logger.Logger) {
 	ipc.once.Do(func() {
 		ipc.km = km
 		ipc.pfm = pfm
 		ipc.pm = pm
+		ipc.rm = rm
 		ipc.logger = logger
 		ipc.ebus = ebus
 		ipc.startTime = time.Now()
@@ -47,7 +50,7 @@ func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_
 }
 
 func (ipc *CoreIpcInterface) check() bool {
-	if ipc.km == nil || ipc.pfm == nil || ipc.pm == nil {
+	if ipc.km == nil || ipc.pfm == nil || ipc.pm == nil || ipc.rm == nil {
 		return false
 	}
 	return true
@@ -190,6 +193,22 @@ func (ipc *CoreIpcInterface) HandleRequest(data []byte) []byte {
 		result, err = ipc.handleGetAppearanceSettings()
 	case MethodSaveSettings:
 		result, err = ipc.handleSaveSettings(req.Params)
+	case MethodGetRuntimes:
+		result, err = ipc.handleGetRuntimes()
+	case MethodGetRuntimeState:
+		result, err = ipc.handleGetRuntimeState(req.Params)
+	case MethodGetRuntimeSettingsPanel:
+		result, err = ipc.handleGetRuntimeSettingsPanel(req.Params)
+	case MethodSetRuntimeSetting:
+		result, err = ipc.handleSetRuntimeSetting(req.Params)
+	case MethodGetRuntimeOperations:
+		result, err = ipc.handleGetRuntimeOperations(req.Params)
+	case MethodInvokeRuntimeOperation:
+		result, err = ipc.handleInvokeRuntimeOperation(req.Params)
+	case MethodGetRuntimeSelectionPanel:
+		result, err = ipc.handleGetRuntimeSelectionPanel(req.Params)
+	case MethodSelectRuntime:
+		result, err = ipc.handleSelectRuntime(req.Params)
 	default:
 		return ipc.errorResp(req.ID, "unknown method: "+req.Method)
 	}
@@ -259,11 +278,10 @@ func (ipc *CoreIpcInterface) handleGetOverview() (json.RawMessage, error) {
 	loadedSet := make(map[string]bool, len(loaded))
 	for _, p := range loaded {
 		loadedSet[p.PluginID] = true
-		if p.Type == constant.KERNEL {
-			activeKernels++
-		}
 	}
 	active = len(loaded)
+	// Kernel 由 KernelManager 管理，已初始化即视为活跃内核。
+	activeKernels = len(ipc.km.GetInitKernelPlugins())
 
 	// 事件统计：今日事件数读取 EventBus 维护的计数变量
 	errorCount := 0
@@ -574,4 +592,101 @@ func (ipc *CoreIpcInterface) handleSaveSettings(params json.RawMessage) (json.Ra
 	}
 	config.SaveSettings(values)
 	return json.Marshal(true)
+}
+
+// 运行时
+
+func (ipc *CoreIpcInterface) handleGetRuntimes() (json.RawMessage, error) {
+	return json.Marshal(ipc.rm.List())
+}
+
+func (ipc *CoreIpcInterface) handleGetRuntimeState(params json.RawMessage) (json.RawMessage, error) {
+	var p RuntimeKernelParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	raw, err := ipc.rm.GetRuntimeState(p.KernelID)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(raw), nil
+}
+
+func (ipc *CoreIpcInterface) handleGetRuntimeSettingsPanel(params json.RawMessage) (json.RawMessage, error) {
+	var p RuntimeKernelParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	raw, err := ipc.rm.GetSettingsPanel(p.KernelID)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(raw), nil
+}
+
+func (ipc *CoreIpcInterface) handleSetRuntimeSetting(params json.RawMessage) (json.RawMessage, error) {
+	var p SetRuntimeSettingParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	if len(p.Value) == 0 {
+		return nil, fmt.Errorf("setting value is required")
+	}
+	raw, err := ipc.rm.SetSetting(p.KernelID, p.Key, string(p.Value))
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(raw), nil
+}
+
+func (ipc *CoreIpcInterface) handleGetRuntimeOperations(params json.RawMessage) (json.RawMessage, error) {
+	var p RuntimeKernelParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	raw, err := ipc.rm.GetOperations(p.KernelID)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(raw), nil
+}
+
+func (ipc *CoreIpcInterface) handleInvokeRuntimeOperation(params json.RawMessage) (json.RawMessage, error) {
+	var p InvokeRuntimeOperationParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	request := string(p.Request)
+	if len(p.Request) == 0 {
+		request = "{}"
+	}
+	raw, err := ipc.rm.InvokeOperation(p.KernelID, p.OperationID, request)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(raw), nil
+}
+
+func (ipc *CoreIpcInterface) handleGetRuntimeSelectionPanel(params json.RawMessage) (json.RawMessage, error) {
+	var p RuntimeSelectionPanelParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	panel, err := ipc.rm.SelectionPanel(p.KernelID, p.Refresh)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(panel)
+}
+
+func (ipc *CoreIpcInterface) handleSelectRuntime(params json.RawMessage) (json.RawMessage, error) {
+	var p SelectRuntimeParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	result, err := ipc.rm.SelectRuntime(p.KernelID, p.Home)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
 }

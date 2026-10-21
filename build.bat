@@ -42,29 +42,33 @@ if errorlevel 1 (
     exit /b 1
 )
 
-where python >nul 2>&1
+where powershell >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python not found in PATH.
+    echo [ERROR] PowerShell not found in PATH.
     exit /b 1
 )
 
 where gcc >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] CXX compiler not found in PATH.
-    exit /b 1
+if not errorlevel 1 (
+    where g++ >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] MinGW gcc found but g++ is missing.
+        exit /b 1
+    )
+) else (
+    where cl >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] No C++ compiler found. Install MinGW-w64 or Visual Studio C++ tools.
+        exit /b 1
+    )
 )
 
-where g++ >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] CXX compiler not found in PATH.
-    exit /b 1
-)
-
-echo       Go:       OK
-echo       .NET:     OK
-echo       CMake:    OK
-echo       Python:   OK
-echo       CXX:      OK
+echo       Go:         OK
+echo       .NET:       OK
+echo       CMake:      OK
+echo       PowerShell: OK
+echo       CXX:        OK
+echo       NOTE: PythonKernel no longer requires a local Python SDK.
 echo.
 
 REM ------------------------------------------------------------
@@ -137,8 +141,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "build\export.dll" (
-    echo [ERROR] PythonKernel export.dll not found: "%ROOT%\implement\Kernel\PythonKernel\build\export.dll"
+set "PYDLL="
+if exist "build\export.dll" (
+    set "PYDLL=build\export.dll"
+) else if exist "build\Release\export.dll" (
+    set "PYDLL=build\Release\export.dll"
+) else if exist "build\Release\binary\export.dll" (
+    set "PYDLL=build\Release\binary\export.dll"
+)
+
+if not defined PYDLL (
+    echo [ERROR] PythonKernel export.dll not found after build.
     cd /d "%ROOT%"
     exit /b 1
 )
@@ -155,6 +168,7 @@ set "PKG=%TEMP%\CuckooPythonKernelPkg"
 if exist "%PKG%" rmdir /s /q "%PKG%"
 mkdir "%PKG%"
 mkdir "%PKG%\binary"
+mkdir "%PKG%\binary\python"
 mkdir "%PKG%\sdk"
 mkdir "%PKG%\sdk\cuckoo_sdk"
 
@@ -165,9 +179,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-copy /y "build\export.dll" "%PKG%\binary\" >nul
+copy /y "%PYDLL%" "%PKG%\binary\export.dll" >nul
 if errorlevel 1 (
     echo [ERROR] Failed to copy PythonKernel export.dll.
+    cd /d "%ROOT%"
+    exit /b 1
+)
+
+xcopy /e /i /y "runtime\python" "%PKG%\binary\python" >nul
+if errorlevel 1 (
+    echo [ERROR] Failed to copy embedded Python runtime.
     cd /d "%ROOT%"
     exit /b 1
 )

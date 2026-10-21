@@ -52,6 +52,16 @@ const (
 	MethodGetSettingsPanel      = "getSettingsPanel"
 	MethodGetAppearanceSettings = "getAppearanceSettings"
 	MethodSaveSettings          = "saveSettings"
+
+	// 运行时
+	MethodGetRuntimes              = "getRuntimes"
+	MethodGetRuntimeState          = "getRuntimeState"
+	MethodGetRuntimeSettingsPanel  = "getRuntimeSettingsPanel"
+	MethodSetRuntimeSetting        = "setRuntimeSetting"
+	MethodGetRuntimeOperations     = "getRuntimeOperations"
+	MethodInvokeRuntimeOperation   = "invokeRuntimeOperation"
+	MethodGetRuntimeSelectionPanel = "getRuntimeSelectionPanel"
+	MethodSelectRuntime            = "selectRuntime"
 )
 
 // Daemon IPC 方法名常量
@@ -87,6 +97,34 @@ type InstallPluginParams struct {
 type PublishEventParams struct {
 	Name    string `json:"name"`
 	Payload string `json:"payload"`
+}
+
+// 运行时请求参数
+
+type RuntimeKernelParams struct {
+	KernelID string `json:"kernelId"`
+}
+
+type SetRuntimeSettingParams struct {
+	KernelID string          `json:"kernelId"`
+	Key      string          `json:"key"`
+	Value    json.RawMessage `json:"value"`
+}
+
+type InvokeRuntimeOperationParams struct {
+	KernelID    string          `json:"kernelId"`
+	OperationID string          `json:"operationId"`
+	Request     json.RawMessage `json:"request"`
+}
+
+type RuntimeSelectionPanelParams struct {
+	KernelID string `json:"kernelId"`
+	Refresh  bool   `json:"refresh"`
+}
+
+type SelectRuntimeParams struct {
+	KernelID string `json:"kernelId"`
+	Home     string `json:"home"`
 }
 
 // 响应数据类型

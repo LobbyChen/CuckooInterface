@@ -47,6 +47,15 @@ class LuaKernel {
   void UnloadPlugin(CuckooPluginHandle handle);
   void ShutdownRuntime();
 
+  /* Runtime Control Plane */
+  int GetSettingsPanel(const CuckooHostAPI* api, char** out_json);
+  int GetRuntimeState(const CuckooHostAPI* api, char** out_json);
+  int SetSetting(const CuckooHostAPI* api, const char* key,
+                 const char* value_json, char** out_json);
+  int GetOperations(const CuckooHostAPI* api, char** out_json);
+  int InvokeOperation(const CuckooHostAPI* api, const char* operation_id,
+                      const char* request_json, char** out_json);
+
   static const char* KernelID();
   static const char* KernelName();
   static const char* Version();
@@ -67,9 +76,16 @@ class LuaKernel {
                             LuaPluginInstance* inst);
   void LogLuaError(const std::string& context, lua_State* state);
   void DestroyPluginInstance(LuaPluginInstance* inst);
+  std::string GetKernelDllDir();
+  size_t PluginCount();
+  std::string BuildRuntimeStateJson();
+  std::string BuildSettingsPanelJson();
+  std::string BuildOperationsJson();
+  std::string BuildPluginListJson();
 
   const CuckooHostAPI* host_api_ = nullptr;
   std::atomic<bool> shutdown_flag_{false};
+  std::atomic<bool> log_callbacks_{false};
   std::mutex plugins_mu_;
   std::vector<LuaPluginInstance*> plugins_;
   std::atomic<uint64_t> instance_counter_{1};

@@ -49,6 +49,7 @@ implement/build/
 
 # CMake build directories for kernels
 implement/Kernel/*/build/
+implement/Kernel/*/build_test/
 cmake-build-*/
 
 # CMake generated files
@@ -158,3 +159,5 @@ Thumbs.db
 .DS_Store
 desktop.ini
 .workbuddy/
+# Local release package output
+Release/

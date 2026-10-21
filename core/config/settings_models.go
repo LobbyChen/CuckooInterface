@@ -112,6 +112,10 @@ const (
 	ActionBrowseFile      ActionType = "browse-file"
 	ActionBrowseDirectory ActionType = "browse-directory"
 	ActionReset           ActionType = "reset"
+	// RuntimeManager 动态运行时选择面板使用的操作。
+	ActionRefreshRuntime ActionType = "refresh-runtime"
+	ActionBrowseRuntime  ActionType = "browse-runtime"
+	ActionApplyRuntime   ActionType = "apply-runtime"
 )
 
 type SettingAction struct {

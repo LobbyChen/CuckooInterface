@@ -103,7 +103,10 @@ namespace CuckooInterfaceUI.Models
     {
         BrowseFile,
         BrowseDirectory,
-        Reset
+        Reset,
+        RefreshRuntime,
+        BrowseRuntime,
+        ApplyRuntime
     }
 
     public class SettingAction

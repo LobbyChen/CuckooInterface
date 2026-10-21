@@ -222,6 +222,24 @@ func go_panic_gateway(reason *C.char) {
 
 // 核心 API
 
+// allocCHostAPI 分配并填充一份 CuckooHostAPI 函数指针表。
+// 每次调用返回独立分配的内存，调用方负责用 C.free 释放。
+func allocCHostAPI(_ *HostAPI) *C.CuckooHostAPI {
+	cAPI := (*C.CuckooHostAPI)(C.malloc(C.sizeof_CuckooHostAPI))
+	if cAPI == nil {
+		return nil
+	}
+	C.memset(unsafe.Pointer(cAPI), 0, C.sizeof_CuckooHostAPI)
+	cAPI.emit_event = (*[0]byte)(unsafe.Pointer(C.get_emit_event_bridge()))
+	cAPI.log_info = (*[0]byte)(unsafe.Pointer(C.get_log_info_bridge()))
+	cAPI.log_error = (*[0]byte)(unsafe.Pointer(C.get_log_error_bridge()))
+	cAPI.get_plugin_config = (*[0]byte)(unsafe.Pointer(C.get_get_plugin_config_bridge()))
+	cAPI.into_loop_report = (*[0]byte)(unsafe.Pointer(C.get_into_loop_report_bridge()))
+	cAPI.operation = (*[0]byte)(unsafe.Pointer(C.get_operation_bridge()))
+	cAPI.panic = (*[0]byte)(unsafe.Pointer(C.get_panic_bridge()))
+	return cAPI
+}
+
 func (k *Kernel) Meta() (kernelID, kernelName, version string, runtime string) {
 	cID := make([]byte, 64)
 	cName := make([]byte, 64)
@@ -246,19 +264,10 @@ func (k *Kernel) InitRuntime(api *HostAPI) error {
 	if k.hostAPI != nil {
 		return fmt.Errorf("cuckoo: kernel already initialized")
 	}
-	cAPI := (*C.CuckooHostAPI)(C.malloc(C.sizeof_CuckooHostAPI))
+	cAPI := allocCHostAPI(api)
 	if cAPI == nil {
 		return fmt.Errorf("cuckoo: failed to allocate host API table")
 	}
-	C.memset(unsafe.Pointer(cAPI), 0, C.sizeof_CuckooHostAPI)
-	// 修正绑定：移除 get_config，绑定 into_loop_report 和 panic
-	cAPI.emit_event = (*[0]byte)(unsafe.Pointer(C.get_emit_event_bridge()))
-	cAPI.log_info = (*[0]byte)(unsafe.Pointer(C.get_log_info_bridge()))
-	cAPI.log_error = (*[0]byte)(unsafe.Pointer(C.get_log_error_bridge()))
-	cAPI.get_plugin_config = (*[0]byte)(unsafe.Pointer(C.get_get_plugin_config_bridge()))
-	cAPI.into_loop_report = (*[0]byte)(unsafe.Pointer(C.get_into_loop_report_bridge()))
-	cAPI.operation = (*[0]byte)(unsafe.Pointer(C.get_operation_bridge()))
-	cAPI.panic = (*[0]byte)(unsafe.Pointer(C.get_panic_bridge()))
 	rc := C.sandbox_init_runtime(k.sandboxHandle, cAPI)
 	if rc != 0 {
 		C.free(unsafe.Pointer(cAPI))
@@ -311,38 +320,35 @@ func (k *Kernel) GetChan() chan struct{} {
 	return k.loopStartedCh
 }
 
-
 /* Runtime Control Plane */
 
-func (k *Kernel) controlHostAPI() (*C.CuckooHostAPI, error) {
+// controlCall 在持有 k.mu 的整个区间内完成一次 Runtime Control 调用：
+// 锁内检查存活、分配 host API 表、提交任务并释放响应，与
+// ShutdownRuntime/Destroy 的释放操作互斥，避免句柄 use-after-free。
+func (k *Kernel) controlCall(
+	callFn func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int,
+) (string, error) {
 	k.mu.Lock()
-	closed := k.closed
-	handle := k.sandboxHandle
-	k.mu.Unlock()
+	defer k.mu.Unlock()
 
-	if closed || handle == nil {
-		return nil, fmt.Errorf("cuckoo: kernel already closed")
+	if k.closed || k.sandboxHandle == nil {
+		return "", fmt.Errorf("cuckoo: kernel already closed")
 	}
 
-	return allocCHostAPI(currentHostAPI())
-}
-
-func (k *Kernel) finishControlResponse(
-	cAPI *C.CuckooHostAPI,
-	response **C.char,
-	rc C.int,
-) (string, error) {
+	cAPI := allocCHostAPI(currentHostAPI())
+	if cAPI == nil {
+		return "", fmt.Errorf("cuckoo: failed to allocate host API table")
+	}
 	defer C.free(unsafe.Pointer(cAPI))
 
-	if rc != 0 {
-		if response != nil && *response != nil {
-			C.sandbox_free_kernel_response(
-				k.sandboxHandle,
-				*response,
-			)
-			*response = nil
-		}
+	handle := k.sandboxHandle
+	var response *C.char
+	rc := callFn(handle, cAPI, &response)
 
+	if rc != 0 {
+		if response != nil {
+			C.sandbox_free_kernel_response(handle, response)
+		}
 		k.handleCrashIfNeeded()
 		return "", fmt.Errorf(
 			"cuckoo: kernel control call failed with code %d",
@@ -350,120 +356,61 @@ func (k *Kernel) finishControlResponse(
 		)
 	}
 
-	if response == nil || *response == nil {
+	if response == nil {
 		return "", nil
 	}
 
-	value := C.GoString(*response)
-	C.sandbox_free_kernel_response(
-		k.sandboxHandle,
-		*response,
-	)
-	*response = nil
-
+	value := C.GoString(response)
+	C.sandbox_free_kernel_response(handle, response)
 	return value, nil
 }
 
 func (k *Kernel) GetSettingsPanel() (string, error) {
-	cAPI, err := k.controlHostAPI()
-	if err != nil {
-		return "", err
-	}
-
-	var response *C.char
-	rc := C.sandbox_get_settings_panel(
-		k.sandboxHandle,
-		cAPI,
-		&response,
-	)
-
-	return k.finishControlResponse(cAPI, &response, rc)
+	return k.controlCall(func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int {
+		return C.sandbox_get_settings_panel(handle, cAPI, response)
+	})
 }
 
 func (k *Kernel) GetRuntimeState() (string, error) {
-	cAPI, err := k.controlHostAPI()
-	if err != nil {
-		return "", err
-	}
-
-	var response *C.char
-	rc := C.sandbox_get_runtime_state(
-		k.sandboxHandle,
-		cAPI,
-		&response,
-	)
-
-	return k.finishControlResponse(cAPI, &response, rc)
+	return k.controlCall(func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int {
+		return C.sandbox_get_runtime_state(handle, cAPI, response)
+	})
 }
 
 func (k *Kernel) GetOperations() (string, error) {
-	cAPI, err := k.controlHostAPI()
-	if err != nil {
-		return "", err
-	}
-
-	var response *C.char
-	rc := C.sandbox_get_operations(
-		k.sandboxHandle,
-		cAPI,
-		&response,
-	)
-
-	return k.finishControlResponse(cAPI, &response, rc)
+	return k.controlCall(func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int {
+		return C.sandbox_get_operations(handle, cAPI, response)
+	})
 }
 
 func (k *Kernel) SetSetting(key, valueJSON string) (string, error) {
-	cAPI, err := k.controlHostAPI()
-	if err != nil {
-		return "", err
-	}
-
-	cKey := C.CString(key)
-	defer C.free(unsafe.Pointer(cKey))
-
-	cValue := C.CString(valueJSON)
-	defer C.free(unsafe.Pointer(cValue))
-
-	var response *C.char
-	rc := C.sandbox_set_setting(
-		k.sandboxHandle,
-		cAPI,
-		cKey,
-		cValue,
-		&response,
-	)
-
-	return k.finishControlResponse(cAPI, &response, rc)
+	return k.controlCall(func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int {
+		cKey := C.CString(key)
+		defer C.free(unsafe.Pointer(cKey))
+		cValue := C.CString(valueJSON)
+		defer C.free(unsafe.Pointer(cValue))
+		return C.sandbox_set_setting(handle, cAPI, cKey, cValue, response)
+	})
 }
 
 func (k *Kernel) InvokeOperation(
 	operationID,
 	requestJSON string,
 ) (string, error) {
-	cAPI, err := k.controlHostAPI()
-	if err != nil {
-		return "", err
-	}
-
-	cOperationID := C.CString(operationID)
-	defer C.free(unsafe.Pointer(cOperationID))
-
-	cRequest := C.CString(requestJSON)
-	defer C.free(unsafe.Pointer(cRequest))
-
-	var response *C.char
-	rc := C.sandbox_invoke_operation(
-		k.sandboxHandle,
-		cAPI,
-		cOperationID,
-		cRequest,
-		&response,
-	)
-
-	return k.finishControlResponse(cAPI, &response, rc)
+	return k.controlCall(func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int {
+		cOperationID := C.CString(operationID)
+		defer C.free(unsafe.Pointer(cOperationID))
+		cRequest := C.CString(requestJSON)
+		defer C.free(unsafe.Pointer(cRequest))
+		return C.sandbox_invoke_operation(
+			handle,
+			cAPI,
+			cOperationID,
+			cRequest,
+			response,
+		)
+	})
 }
-
-
 
 // StartLoop 同步启动 Kernel 循环
 func (k *Kernel) StartLoop() error {
@@ -533,10 +480,13 @@ func (k *Kernel) handleCrashIfNeeded() {
 	}
 }
 func (k *Kernel) Destroy() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if k.sandboxHandle != nil {
 		C.destroy_sandbox(k.sandboxHandle)
 		k.sandboxHandle = nil
 	}
+	k.closed = true
 }
 func (d *PluginDescriptor) Handle() PluginHandle {
 	return PluginHandle(d.InternalObjectPtr)

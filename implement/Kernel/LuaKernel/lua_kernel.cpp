@@ -1,10 +1,13 @@
 // Copyright (C) 2026 LobbyChen
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "lua_kernel.h"
+#include "cuckoo_control_json.h"
 #include "json_utils.h"
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -18,11 +21,20 @@ namespace {
 
 constexpr const char* kKernelID = "com.cuckoo.kernel.lua";
 constexpr const char* kKernelName = "Lua Kernel";
-constexpr const char* kVersion = "1.0.0";
+constexpr const char* kVersion = "1.1.0";
 constexpr const char* kRuntime = "lua";
 constexpr int kMaxJsonDepth = 32;
 
 LuaKernel* g_kernel = nullptr;
+
+std::string LuaRuntimeVersion() {
+  std::string version = LUA_RELEASE;
+  const std::string prefix = "Lua ";
+  if (version.rfind(prefix, 0) == 0) {
+    version = version.substr(prefix.size());
+  }
+  return version;
+}
 
 std::string LuaString(lua_State* L, int index) {
   size_t len = 0;
@@ -510,6 +522,11 @@ void LuaKernel::TriggerCallback(CuckooPluginHandle handle,
   auto* cb = static_cast<LuaCallback*>(listener->function);
   if (!inst || !cb || !inst->state) return;
 
+  if (log_callbacks_.load() && host_api_ && host_api_->log_info) {
+    std::string msg = "[LuaKernel] callback " + cb->event_name;
+    host_api_->log_info(msg.c_str());
+  }
+
   lua_State* L = inst->state;
   lua_rawgeti(L, LUA_REGISTRYINDEX, cb->registry_ref);
   if (!lua_isfunction(L, -1)) {
@@ -579,6 +596,179 @@ void LuaKernel::ShutdownRuntime() {
   g_kernel = nullptr;
 }
 
+// ===========================================================================
+// Runtime Control Plane
+// ===========================================================================
+std::string LuaKernel::GetKernelDllDir() {
+  HMODULE module = nullptr;
+  GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                         GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                     reinterpret_cast<LPCSTR>(&get_cuckoo_kernel_interface),
+                     &module);
+  char dll_path[MAX_PATH] = {0};
+  if (module && GetModuleFileNameA(module, dll_path, MAX_PATH)) {
+    std::string path(dll_path);
+    const auto pos = path.find_last_of("\\/");
+    if (pos != std::string::npos) {
+      return path.substr(0, pos);
+    }
+  }
+  return ".";
+}
+
+size_t LuaKernel::PluginCount() {
+  std::lock_guard<std::mutex> lock(plugins_mu_);
+  return plugins_.size();
+}
+
+std::string LuaKernel::BuildRuntimeStateJson() {
+  const std::string state = host_api_ ? "ready" : "stopped";
+  std::string json = "{\"state\":" + cuckoo_control::Quote(state);
+  json += ",\"runtime\":\"lua\"";
+  json += ",\"version\":" + cuckoo_control::Quote(LuaRuntimeVersion());
+  json += ",\"home\":" + cuckoo_control::Quote(GetKernelDllDir());
+  json += ",\"source\":\"embedded\",\"embedded\":true";
+  json += ",\"pluginCount\":" + std::to_string(PluginCount());
+  json += ",\"logCallbacks\":";
+  json += cuckoo_control::Bool(log_callbacks_.load());
+  json += "}";
+  return json;
+}
+
+std::string LuaKernel::BuildSettingsPanelJson() {
+  const std::string home = GetKernelDllDir();
+  std::string settings;
+  settings += cuckoo_control::TextSetting(
+      "runtime.version", "Lua 版本",
+      "LuaKernel 静态链接的 Lua VM 版本，无需系统安装 Lua。",
+      LuaRuntimeVersion());
+  settings += ",";
+  settings += cuckoo_control::TextSetting(
+      "runtime.home", "Kernel 目录", "LuaKernel 所在目录。", home);
+  settings += ",";
+  settings += cuckoo_control::TextSetting(
+      "runtime.source", "运行时来源", "Lua VM 已静态链接进 Kernel。", "内置静态链接");
+  settings += ",";
+  settings += cuckoo_control::SwitchSetting(
+      "log.callbacks", "记录事件回调日志",
+      "每次触发插件事件回调时写入一条 INFO 日志，便于排查问题。",
+      log_callbacks_.load());
+
+  std::string json = "{\"pages\":[{\"key\":\"lua-runtime\",";
+  json += "\"name\":\"Lua 运行时\",\"sections\":[";
+  json += "{\"key\":\"runtime-info\",\"name\":\"运行时信息\",\"settings\":[";
+  json += settings;
+  json += "]}]}]}";
+  return json;
+}
+
+std::string LuaKernel::BuildOperationsJson() {
+  return "[{\"id\":\"runtime.probe\",\"name\":\"重新探测运行时\","
+         "\"description\":\"返回当前 Lua 版本、Kernel 目录与插件数量。\"},"
+         "{\"id\":\"plugins.list\",\"name\":\"列出插件\","
+         "\"description\":\"返回当前 Lua Kernel 托管的插件 ID。\"}]";
+}
+
+std::string LuaKernel::BuildPluginListJson() {
+  std::vector<std::string> ids;
+  {
+    std::lock_guard<std::mutex> lock(plugins_mu_);
+    ids.reserve(plugins_.size());
+    for (const auto* plugin : plugins_) {
+      ids.push_back(plugin->plugin_id);
+    }
+  }
+  return cuckoo_control::StringArray(ids);
+}
+
+int LuaKernel::GetSettingsPanel(const CuckooHostAPI*, char** out_json) {
+  if (out_json == nullptr) {
+    return -1;
+  }
+  *out_json = cuckoo_control::Alloc(BuildSettingsPanelJson());
+  return *out_json != nullptr ? 0 : -1;
+}
+
+int LuaKernel::GetRuntimeState(const CuckooHostAPI*, char** out_json) {
+  if (out_json == nullptr) {
+    return -1;
+  }
+  *out_json = cuckoo_control::Alloc(BuildRuntimeStateJson());
+  return *out_json != nullptr ? 0 : -1;
+}
+
+int LuaKernel::SetSetting(const CuckooHostAPI*, const char* key,
+                          const char* value_json, char** out_json) {
+  if (out_json == nullptr) {
+    return -1;
+  }
+  *out_json = nullptr;
+  if (key == nullptr || value_json == nullptr) {
+    *out_json = cuckoo_control::AllocError("key and value are required");
+    return 0;
+  }
+
+  const std::string name(key);
+  std::string value(value_json);
+  value.erase(std::remove_if(value.begin(), value.end(),
+                             [](unsigned char c) { return std::isspace(c) != 0; }),
+              value.end());
+
+  if (name == "log.callbacks") {
+    if (value != "true" && value != "false") {
+      *out_json =
+          cuckoo_control::AllocError("log.callbacks expects a boolean value");
+      return 0;
+    }
+    log_callbacks_.store(value == "true");
+    std::string extra = "\"key\":" + cuckoo_control::Quote(name) +
+                        ",\"value\":" +
+                        cuckoo_control::Bool(log_callbacks_.load());
+    *out_json = cuckoo_control::AllocOk(extra);
+    return 0;
+  }
+
+  *out_json = cuckoo_control::AllocError("unsupported setting: " + name);
+  return 0;
+}
+
+int LuaKernel::GetOperations(const CuckooHostAPI*, char** out_json) {
+  if (out_json == nullptr) {
+    return -1;
+  }
+  *out_json = cuckoo_control::Alloc(BuildOperationsJson());
+  return *out_json != nullptr ? 0 : -1;
+}
+
+int LuaKernel::InvokeOperation(const CuckooHostAPI*, const char* operation_id,
+                               const char* request_json, char** out_json) {
+  (void)request_json;
+  if (out_json == nullptr) {
+    return -1;
+  }
+  *out_json = nullptr;
+  if (operation_id == nullptr) {
+    *out_json = cuckoo_control::AllocError("operation id is required");
+    return 0;
+  }
+
+  const std::string operation(operation_id);
+  if (operation == "runtime.probe") {
+    std::string extra = "\"state\":" + BuildRuntimeStateJson();
+    *out_json = cuckoo_control::AllocOk(extra);
+    return 0;
+  }
+  if (operation == "plugins.list") {
+    std::string extra = "\"plugins\":" + BuildPluginListJson();
+    extra += ",\"pluginCount\":" + std::to_string(PluginCount());
+    *out_json = cuckoo_control::AllocOk(extra);
+    return 0;
+  }
+
+  *out_json = cuckoo_control::AllocError("unsupported operation: " + operation);
+  return 0;
+}
+
 }  // namespace lua_kernel
 
 extern "C" {
@@ -614,6 +804,37 @@ static void lua_shutdown_runtime(void) {
   lua_kernel::LuaKernel::Instance().ShutdownRuntime();
 }
 
+static int lua_get_settings_panel(const CuckooHostAPI* api, char** out_json) {
+  return lua_kernel::LuaKernel::Instance().GetSettingsPanel(api, out_json);
+}
+
+static int lua_get_runtime_state(const CuckooHostAPI* api, char** out_json) {
+  return lua_kernel::LuaKernel::Instance().GetRuntimeState(api, out_json);
+}
+
+static int lua_set_setting(const CuckooHostAPI* api, const char* key,
+                           const char* value_json, char** out_json) {
+  return lua_kernel::LuaKernel::Instance().SetSetting(api, key, value_json,
+                                                      out_json);
+}
+
+static int lua_get_operations(const CuckooHostAPI* api, char** out_json) {
+  return lua_kernel::LuaKernel::Instance().GetOperations(api, out_json);
+}
+
+static int lua_invoke_operation(const CuckooHostAPI* api,
+                                const char* operation_id,
+                                const char* request_json, char** out_json) {
+  return lua_kernel::LuaKernel::Instance().InvokeOperation(
+      api, operation_id, request_json, out_json);
+}
+
+static void lua_free_response(char* response) {
+  if (response != nullptr) {
+    std::free(response);
+  }
+}
+
 __declspec(dllexport) CuckooKernelInterface* get_cuckoo_kernel_interface(void) {
   if (!g_interface_initialized) {
     g_lua_kernel_interface.kernel_id = lua_kernel::LuaKernel::KernelID();
@@ -626,6 +847,12 @@ __declspec(dllexport) CuckooKernelInterface* get_cuckoo_kernel_interface(void) {
     g_lua_kernel_interface.trigger_callback = lua_trigger_callback;
     g_lua_kernel_interface.unload_plugin = lua_unload_plugin;
     g_lua_kernel_interface.shutdown_runtime = lua_shutdown_runtime;
+    g_lua_kernel_interface.get_settings_panel = lua_get_settings_panel;
+    g_lua_kernel_interface.get_runtime_state = lua_get_runtime_state;
+    g_lua_kernel_interface.set_setting = lua_set_setting;
+    g_lua_kernel_interface.get_operations = lua_get_operations;
+    g_lua_kernel_interface.invoke_operation = lua_invoke_operation;
+    g_lua_kernel_interface.free_response = lua_free_response;
     g_interface_initialized = true;
   }
   return &g_lua_kernel_interface;

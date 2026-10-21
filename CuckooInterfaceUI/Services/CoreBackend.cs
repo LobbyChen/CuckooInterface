@@ -161,6 +161,32 @@ namespace CuckooInterfaceUI.Services
         public Task<bool> SaveSettingsAsync(Dictionary<string, object> values, CancellationToken cancellationToken = default) =>
             CallCoreAsync<bool>("saveSettings", values, cancellationToken);
 
+        // ===== 运行时 =====
+
+        public Task<List<RuntimeInfo>> GetRuntimesAsync(CancellationToken cancellationToken = default) =>
+            CallCoreAsync<List<RuntimeInfo>>("getRuntimes", null, cancellationToken);
+
+        public Task<SettingPanel> GetRuntimeSettingsPanelAsync(string kernelId, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<SettingPanel>("getRuntimeSettingsPanel", new { kernelId }, cancellationToken);
+
+        public Task<JsonElement> GetRuntimeStateAsync(string kernelId, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<JsonElement>("getRuntimeState", new { kernelId }, cancellationToken);
+
+        public Task<RuntimeOperationResult> SetRuntimeSettingAsync(string kernelId, string key, object value, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<RuntimeOperationResult>("setRuntimeSetting", new { kernelId, key, value }, cancellationToken);
+
+        public Task<List<RuntimeOperation>> GetRuntimeOperationsAsync(string kernelId, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<List<RuntimeOperation>>("getRuntimeOperations", new { kernelId }, cancellationToken);
+
+        public Task<JsonElement> InvokeRuntimeOperationAsync(string kernelId, string operationId, object? request = null, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<JsonElement>("invokeRuntimeOperation", new { kernelId, operationId, request = request ?? new { } }, cancellationToken);
+
+        public Task<SettingPanel> GetRuntimeSelectionPanelAsync(string kernelId, bool refresh = false, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<SettingPanel>("getRuntimeSelectionPanel", new { kernelId, refresh }, cancellationToken);
+
+        public Task<RuntimeSelectionResult> SelectRuntimeAsync(string kernelId, string home, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<RuntimeSelectionResult>("selectRuntime", new { kernelId, home }, cancellationToken);
+
         // ===== Daemon =====
 
         public Task<string> PingDaemonAsync(CancellationToken cancellationToken = default) =>
@@ -505,6 +531,9 @@ namespace CuckooInterfaceUI.Services
                     "browse-file" => ActionType.BrowseFile,
                     "browse-directory" => ActionType.BrowseDirectory,
                     "reset" => ActionType.Reset,
+                    "refresh-runtime" => ActionType.RefreshRuntime,
+                    "browse-runtime" => ActionType.BrowseRuntime,
+                    "apply-runtime" => ActionType.ApplyRuntime,
                     _ => throw new JsonException($"Unknown setting action type '{value}'.")
                 };
             }
@@ -516,6 +545,9 @@ namespace CuckooInterfaceUI.Services
                     ActionType.BrowseFile => "browse-file",
                     ActionType.BrowseDirectory => "browse-directory",
                     ActionType.Reset => "reset",
+                    ActionType.RefreshRuntime => "refresh-runtime",
+                    ActionType.BrowseRuntime => "browse-runtime",
+                    ActionType.ApplyRuntime => "apply-runtime",
                     _ => throw new JsonException($"Unknown setting action type '{value}'.")
                 };
                 writer.WriteStringValue(text);
