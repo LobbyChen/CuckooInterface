@@ -165,8 +165,7 @@ func loadBinaryConfig(fp string) (map[string]*SinglePluginConfig, error) {
 	// 读取 configString 长度
 	configLength := binary.BigEndian.Uint64(data[offset : offset+8])
 	offset += 8
-	// 先做上界校验：损坏/恶意的 .cfg 若声明超长 payload，
-	// 会在转 int 时溢出为负数，进而使切片越界 panic 拖垮整个 Core。
+	// 检查上限
 	if configLength > uint64(len(data)-offset) {
 		return nil, fmt.Errorf("invalid config file: declared length %d exceeds file size", configLength)
 	}
