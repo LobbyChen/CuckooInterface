@@ -66,8 +66,7 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 	runtimeDir := filepath.Join(baseDirForExtract, constantPkg.RuntimePluginFolder)
 	// 对于所有文件进行遍历
 	err = filepath.Walk(absFolder, func(path string, info os.FileInfo, err error) error {
-		// Walk 在访问失败时 err != nil 且 info 为 nil；必须先检查 err，
-		// 否则 info.IsDir() 会对 nil 解引用导致整个 Core 启动崩溃。
+		
 		if err != nil {
 			return nil
 		}
@@ -104,18 +103,15 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 		if list == nil {
 			continue
 		}
+		if err := extractHelper(file.fp, targetDir); err != nil {
+			continue
+		}
+		succ++
 		*list = append(*list, &SinglePluginFile{
 			fp:   file.fp,
 			dir:  targetDir,
 			Typo: typo,
 		})
-		if err := extractHelper(file.fp, targetDir); err != nil {
-			// 解压失败时回滚刚加入的条目，避免遗留半安装状态；
-			// 后续 LoadPluginMeta 会因缺少 META-INF.json 而报错。
-			*list = (*list)[:len(*list)-1]
-			continue
-		}
-		succ++
 	}
 	return succ, nil
 }
