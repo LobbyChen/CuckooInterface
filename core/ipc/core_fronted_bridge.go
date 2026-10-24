@@ -11,8 +11,10 @@ import (
 	"CuckooInterface/core/runtime_manager"
 	"CuckooInterface/core/utils"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -76,54 +78,25 @@ func (ipc *CoreIpcInterface) DestroyPipe() error {
 	return ipc.listener.Close()
 }
 
-func (ipc *CoreIpcInterface) waitForSentData(data []byte) error {
-	conn, err := ipc.listener.Accept()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	err = conn.SetWriteDeadline(time.Now().Add(time.Second * 1))
-	if err != nil {
-		return err
-	}
-	sentData := GeneralPkg(data)
-	cnt, err := conn.Write(sentData)
-	if err != nil {
-		return err
-	}
-	if cnt != len(sentData) {
-		return fmt.Errorf("expected to write %d bytes, wrote %d", len(data), cnt)
-	}
-	return nil
-}
-
-func (ipc *CoreIpcInterface) waitForReceivedData() ([]byte, error) {
-	conn, err := ipc.listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	err = conn.SetReadDeadline(time.Now().Add(time.Second * 1))
-	if err != nil {
-		return nil, err
-	}
-	recvData, err := ReadSinglePacket(conn)
-	if err != nil {
-		return nil, err
-	}
-	return recvData, nil
-}
-
 // ServeLoop 持续接受前端连接，读取请求并返回响应。
 // 每个连接处理一次请求-响应后关闭，由前端重新连接发起下一次调用。
+// 单个连接由独立 goroutine 处理，避免慢请求阻塞后续请求；
+// accept 瞬时错误（如连接被对端重置）只记录日志并继续，防止整个
+// IPC 服务被一次临时错误永久击停。
 func (ipc *CoreIpcInterface) ServeLoop() {
 	for {
 		conn, err := ipc.listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				ipc.logger.Infof("IPC listener closed, serving loop stopped")
+				return
+			}
 			ipc.logger.Errorf("IPC accept failed: %v", err)
-			return
+			// 瞬时错误后短暂退避，避免在持续故障时高频空转。
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
-		ipc.handleConnection(conn)
+		go ipc.handleConnection(conn)
 	}
 }
 
@@ -485,10 +458,13 @@ func (ipc *CoreIpcInterface) handleInstallPlugin(params json.RawMessage) (json.R
 	if err := config.EnsurePluginRoot(pluginRoot); err != nil {
 		return nil, fmt.Errorf("prepare plugin root failed: %w", err)
 	}
-	if err := utils.CopyFile(p.Path, filepath.Join(pluginRoot, plugTypeFolder(plugType), filepath.Base(p.Path))); err != nil {
+	copied := filepath.Join(pluginRoot, plugTypeFolder(plugType), filepath.Base(p.Path))
+	if err := utils.CopyFile(p.Path, copied); err != nil {
 		return nil, err
 	}
 	if err := ipc.pfm.ExtractAndLoadExternalPlugin(p.Path, plugType); err != nil {
+		// 安装失败时清理刚拷贝的备份文件，避免残留半安装状态。
+		_ = os.Remove(copied)
 		return nil, fmt.Errorf("install plugin failed: %w", err)
 	}
 	return json.Marshal(true)

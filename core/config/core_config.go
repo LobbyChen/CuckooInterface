@@ -164,7 +164,8 @@ func writeCoreConfigFile(fp string, cfg *CoreConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(fp, data, 0666)
+	// 0600：配置文件含 ServiceUserSID 等敏感信息，不应允许其他用户读写。
+	return os.WriteFile(fp, data, 0600)
 }
 
 // CorePipeSecurityDescriptor 返回 Core 命名管道的 SDDL。

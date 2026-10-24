@@ -75,7 +75,8 @@ func (m *Manager) persistConfigLocked(cfg Config) error {
 		return err
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(m.cfgPath, data, 0o644); err != nil {
+	// 0600：运行时选择属于用户偏好，不应允许其他用户读写。
+	if err := os.WriteFile(m.cfgPath, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", m.cfgPath, err)
 	}
 	return nil

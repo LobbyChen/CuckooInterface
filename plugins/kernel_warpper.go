@@ -241,6 +241,11 @@ func allocCHostAPI(_ *HostAPI) *C.CuckooHostAPI {
 }
 
 func (k *Kernel) Meta() (kernelID, kernelName, version string, runtime string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
+		return "", "", "", ""
+	}
 	cID := make([]byte, 64)
 	cName := make([]byte, 64)
 	cVer := make([]byte, 32)
@@ -297,8 +302,11 @@ func (k *Kernel) LoadPlugin(pluginPath, manifestJSON string) (*PluginDescriptor,
 	return convertDescriptor(&cDesc), nil
 }
 func (k *Kernel) TriggerCallback(handle PluginHandle, listener *ListenerRecord, jsonPayload string) {
-	// 事件 Worker 池异步调用
-	if k.sandboxHandle == nil {
+	// 事件 Worker 池异步调用；加锁防止与 Shutdown/Destroy 并发时
+	// 使用已释放的 sandboxHandle。
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
 		return
 	}
 	cPayload := C.CString(jsonPayload)
@@ -312,6 +320,11 @@ func (k *Kernel) TriggerCallback(handle PluginHandle, listener *ListenerRecord, 
 	C.sandbox_trigger_callback(k.sandboxHandle, C.CuckooPluginHandle(handle), &cListener, cPayload)
 }
 func (k *Kernel) UnloadPlugin(handle PluginHandle) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
+		return
+	}
 	C.sandbox_unload_plugin(k.sandboxHandle, C.CuckooPluginHandle(handle))
 }
 func (k *Kernel) GetChan() chan struct{} {
@@ -455,6 +468,11 @@ func (k *Kernel) ShutdownRuntime() {
 	k.closed = true
 }
 func (k *Kernel) IsAlive() bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
+		return false
+	}
 	return C.is_sandbox_alive(k.sandboxHandle) == 1
 }
 

@@ -29,7 +29,7 @@ func (spc *SinglePluginConfig) SaveConfig(fp string) error {
 	copy(data[offset:offset+configLength], configBytes)
 	offset += configLength
 	// 写入文件
-	return os.WriteFile(fp, data, 0666)
+	return os.WriteFile(fp, data, 0600)
 }
 func (spc *SinglePluginConfig) GetConfigString() string {
 	return spc.configString
@@ -165,10 +165,12 @@ func loadBinaryConfig(fp string) (map[string]*SinglePluginConfig, error) {
 	// 读取 configString 长度
 	configLength := binary.BigEndian.Uint64(data[offset : offset+8])
 	offset += 8
-	// 读取 configString
-	if offset+int(configLength) > len(data) {
-		return nil, errors.New("invalid config file: cannot read config string")
+	// 先做上界校验：损坏/恶意的 .cfg 若声明超长 payload，
+	// 会在转 int 时溢出为负数，进而使切片越界 panic 拖垮整个 Core。
+	if configLength > uint64(len(data)-offset) {
+		return nil, fmt.Errorf("invalid config file: declared length %d exceeds file size", configLength)
 	}
+	// 读取 configString
 	configString := string(data[offset : offset+int(configLength)])
 	offset += int(configLength)
 	// 验证是否有多余数据

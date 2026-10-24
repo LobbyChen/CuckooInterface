@@ -7,12 +7,14 @@ import (
 	IPC "CuckooInterface/core/ipc"
 	"CuckooInterface/core/logger"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
-	pipe "gopkg.in/natefinch/npipe.v2"
+	winio "github.com/Microsoft/go-winio"
+	"golang.org/x/sys/windows"
 )
 
 // CoreControlFunc 定义控制 Core 生命周期的函数签名
@@ -21,7 +23,7 @@ type CoreControlFunc func() error
 // DaemonIpcInterface 定义与守护进程/UI层交互的接口
 type DaemonIpcInterface struct {
 	logger    *logger.Logger
-	listener  *pipe.PipeListener
+	listener  net.Listener
 	startCore CoreControlFunc // 注入的启动函数
 	stopCore  CoreControlFunc // 注入的停止函数
 	once      sync.Once
@@ -38,9 +40,31 @@ func (ipc *DaemonIpcInterface) Init(logger *logger.Logger, startCore, stopCore C
 	})
 }
 
+// daemonPipeSecurity 生成 Daemon 管道的 SDDL：仅 SYSTEM、管理员与当前用户可访问。
+// Daemon 管道承载 startCore/stopCore 控制命令，必须限制为本机可信主体，
+// 否则任意本机进程都能远程启停 Core。
+func daemonPipeSecurity() string {
+	token, err := windows.OpenCurrentProcessToken()
+	if err != nil {
+		return ""
+	}
+	defer token.Close()
+	user, err := token.GetTokenUser()
+	if err != nil {
+		return ""
+	}
+	sid := user.User.Sid.String()
+	if sid == "" {
+		return ""
+	}
+	return "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;" + sid + ")"
+}
+
 // CreatePipe 创建命名管道监听器
 func (ipc *DaemonIpcInterface) CreatePipe() error {
-	l, err := pipe.Listen(constant.DaemonNamePipe)
+	l, err := winio.ListenPipe(constant.DaemonNamePipe, &winio.PipeConfig{
+		SecurityDescriptor: daemonPipeSecurity(),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to listen on pipe %s: %w", constant.DaemonNamePipe, err)
 	}
@@ -71,10 +95,16 @@ func (ipc *DaemonIpcInterface) HandleRequest() {
 	for {
 		conn, err := ipc.listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				ipc.logger.Info("Daemon IPC listener closed, serving loop stopped")
+				return
+			}
 			ipc.logger.Errorf("Daemon IPC accept error: %v", err)
-			break
+			// 瞬时错误不退出循环，避免一次临时错误让 Daemon IPC 永久不可用。
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
-		ipc.handleConnection(conn)
+		go ipc.handleConnection(conn)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"CuckooInterface/core/logger"
 	"CuckooInterface/plugins"
 	"fmt"
+	"sync"
 )
 
 type pluginDescriptor struct {
@@ -26,6 +27,10 @@ type PluginManager struct {
 	logger        *logger.Logger
 	// pluginEventHook 可选的插件状态变化钩子
 	pluginEventHook PluginEventHook
+
+	// mu 保护 loadedPlugins：IPC 服务并发处理请求时会并发
+	// 调用 LoadPlugin/UnloadPlugin/ListLoadedPlugins。
+	mu sync.Mutex
 }
 
 // SetPluginEventHook 设置插件装载状态变化钩子，应在任何插件加载前调用。
@@ -117,7 +122,9 @@ func (pm *PluginManager) LoadPlugin(plugin *SinglePluginFile) error {
 		kernel: kernel,
 		typo:   plugin.Typo,
 	}
+	pm.mu.Lock()
 	pm.loadedPlugins[plugin.Name()] = descriptor
+	pm.mu.Unlock()
 	// 注册事件
 	var regErr error
 	switch plugin.Typo {
@@ -133,7 +140,9 @@ func (pm *PluginManager) LoadPlugin(plugin *SinglePluginFile) error {
 		// 先注销已注册的监听器/事件，避免 EventBus 持有悬空指针或永久占用事件名
 		pm.eventBus.UnregisterPlugin(kernel, plug.Handle())
 		pm.eventBus.UnregisterPluginEvents(plug.PluginID)
+		pm.mu.Lock()
 		delete(pm.loadedPlugins, plugin.Name())
+		pm.mu.Unlock()
 		kernel.UnloadPlugin(plug.Handle())
 		return regErr
 	}
@@ -144,7 +153,12 @@ func (pm *PluginManager) UnloadPlugin(plugin *SinglePluginFile) error {
 	if !pm.checkEnv() {
 		return fmt.Errorf("plugin manager is not initialized")
 	}
+	pm.mu.Lock()
 	currentPlugin, ok := pm.loadedPlugins[plugin.Name()]
+	if ok {
+		delete(pm.loadedPlugins, plugin.Name())
+	}
+	pm.mu.Unlock()
 	if !ok {
 		pm.logger.Errorf("plugin manager failed to unload plugin %s: not loaded", plugin.Name())
 		return fmt.Errorf("plugin %s is not loaded", plugin.Name())
@@ -154,8 +168,6 @@ func (pm *PluginManager) UnloadPlugin(plugin *SinglePluginFile) error {
 	pm.eventBus.UnregisterPluginEvents(currentPlugin.p.PluginID)
 	// 利用 kernel 释放插件实例
 	currentPlugin.kernel.UnloadPlugin(currentPlugin.p.Handle())
-	// 移除 map
-	delete(pm.loadedPlugins, plugin.Name())
 	pm.notifyPluginEvent(false, plugin.Meta, plugin.Typo)
 	return nil
 }
@@ -172,6 +184,8 @@ type PluginSummary struct {
 
 // ListLoadedPlugins 返回当前已加载插件的只读摘要列表
 func (pm *PluginManager) ListLoadedPlugins() []PluginSummary {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 	sums := make([]PluginSummary, 0, len(pm.loadedPlugins))
 	for _, d := range pm.loadedPlugins {
 		s := PluginSummary{

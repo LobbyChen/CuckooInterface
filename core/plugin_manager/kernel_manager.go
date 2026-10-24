@@ -87,8 +87,24 @@ func (km *KernelManager) LoadSingleKernel(kernel *SinglePluginFile, ctx context.
 	select {
 	case res = <-resultCh:
 	case <-ctx.Done():
+		// 无法取消正在进行的 DLL 加载；若加载最终成功，需销毁已创建的
+		// sandbox，避免句柄泄漏。
+		select {
+		case res = <-resultCh:
+			if res.err == nil && res.k != nil {
+				res.k.Destroy()
+			}
+		default:
+		}
 		return fmt.Errorf("loading kernel DLL cancelled: %w", ctx.Err())
 	case <-time.After(kernelLoadTimeout):
+		select {
+		case res = <-resultCh:
+			if res.err == nil && res.k != nil {
+				res.k.Destroy()
+			}
+		default:
+		}
 		return fmt.Errorf("loading kernel DLL timed out after %v", kernelLoadTimeout)
 	}
 	if res.err != nil {

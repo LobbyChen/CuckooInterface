@@ -66,10 +66,12 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 	runtimeDir := filepath.Join(baseDirForExtract, constantPkg.RuntimePluginFolder)
 	// 对于所有文件进行遍历
 	err = filepath.Walk(absFolder, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
+		// Walk 在访问失败时 err != nil 且 info 为 nil；必须先检查 err，
+		// 否则 info.IsDir() 会对 nil 解引用导致整个 Core 启动崩溃。
+		if err != nil {
 			return nil
 		}
-		if err != nil {
+		if info == nil || info.IsDir() {
 			return nil
 		}
 		Plugins = append(Plugins, SinglePluginFile{
@@ -86,30 +88,31 @@ func (pm *PluginFileManager) UnZipAllPlugins(pluginsFolder string) (uint64, erro
 	for _, file := range Plugins {
 		dir := filepath.Dir(file.fp)
 		targetDir := filepath.Join(runtimeDir, filepath.Base(trimExt(file.fp)))
+		var list *[]*SinglePluginFile
+		var typo constantPkg.PlugType
 		switch dir {
 		case activeDir:
-			pm.Active = append(pm.Active, &SinglePluginFile{
-				fp:   file.fp,
-				dir:  targetDir,
-				Typo: constantPkg.ACTIVE,
-			})
-			err = extractHelper(file.fp, targetDir)
+			list = &pm.Active
+			typo = constantPkg.ACTIVE
 		case baseDir:
-			pm.Base = append(pm.Base, &SinglePluginFile{
-				fp:   file.fp,
-				dir:  targetDir,
-				Typo: constantPkg.BASE,
-			})
-			err = extractHelper(file.fp, targetDir)
+			list = &pm.Base
+			typo = constantPkg.BASE
 		case kernelDir:
-			pm.Kernel = append(pm.Kernel, &SinglePluginFile{
-				fp:   file.fp,
-				dir:  targetDir,
-				Typo: constantPkg.KERNEL,
-			})
-			err = extractHelper(file.fp, targetDir)
+			list = &pm.Kernel
+			typo = constantPkg.KERNEL
 		}
-		if err != nil {
+		if list == nil {
+			continue
+		}
+		*list = append(*list, &SinglePluginFile{
+			fp:   file.fp,
+			dir:  targetDir,
+			Typo: typo,
+		})
+		if err := extractHelper(file.fp, targetDir); err != nil {
+			// 解压失败时回滚刚加入的条目，避免遗留半安装状态；
+			// 后续 LoadPluginMeta 会因缺少 META-INF.json 而报错。
+			*list = (*list)[:len(*list)-1]
 			continue
 		}
 		succ++
@@ -208,7 +211,9 @@ func (pm *PluginFileManager) RemovePlugin(id string) error {
 
 	// 清理解压目录
 	if target.dir != "" {
-		_ = os.RemoveAll(target.dir)
+		if err := os.RemoveAll(target.dir); err != nil {
+			return fmt.Errorf("remove extracted dir of plugin %s failed: %w", id, err)
+		}
 	}
 	return nil
 }
@@ -296,12 +301,14 @@ func (pm *PluginFileManager) ExtractAndLoadExternalPlugin(pluginPath string, plu
 	// 解压插件
 	err = extractHelper(targetPlugin.fp, targetPlugin.dir)
 	if err != nil {
+		pm.rollbackAddedPlugin(pluginType)
 		return fmt.Errorf("failed to extract plugin: %w", err)
 	}
 
 	// 加载元数据
 	err = loadMeta(targetPlugin)
 	if err != nil {
+		pm.rollbackAddedPlugin(pluginType)
 		return fmt.Errorf("failed to load plugin metadata: %w", err)
 	}
 
@@ -310,6 +317,26 @@ func (pm *PluginFileManager) ExtractAndLoadExternalPlugin(pluginPath string, plu
 	pm.lock.Unlock()
 
 	return nil
+}
+
+// rollbackAddedPlugin 在外部插件安装失败时移除刚加入的列表条目，避免半安装状态。
+func (pm *PluginFileManager) rollbackAddedPlugin(pluginType constantPkg.PlugType) {
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+	switch pluginType {
+	case constantPkg.KERNEL:
+		if n := len(pm.Kernel); n > 0 {
+			pm.Kernel = pm.Kernel[:n-1]
+		}
+	case constantPkg.ACTIVE:
+		if n := len(pm.Active); n > 0 {
+			pm.Active = pm.Active[:n-1]
+		}
+	case constantPkg.BASE:
+		if n := len(pm.Base); n > 0 {
+			pm.Base = pm.Base[:n-1]
+		}
+	}
 }
 
 // copyFile 使用 io.Copy 拷贝文件
