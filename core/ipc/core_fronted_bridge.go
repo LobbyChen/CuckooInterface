@@ -79,10 +79,6 @@ func (ipc *CoreIpcInterface) DestroyPipe() error {
 }
 
 // ServeLoop 持续接受前端连接，读取请求并返回响应。
-// 每个连接处理一次请求-响应后关闭，由前端重新连接发起下一次调用。
-// 单个连接由独立 goroutine 处理，避免慢请求阻塞后续请求；
-// accept 瞬时错误（如连接被对端重置）只记录日志并继续，防止整个
-// IPC 服务被一次临时错误永久击停。
 func (ipc *CoreIpcInterface) ServeLoop() {
 	for {
 		conn, err := ipc.listener.Accept()
@@ -92,7 +88,7 @@ func (ipc *CoreIpcInterface) ServeLoop() {
 				return
 			}
 			ipc.logger.Errorf("IPC accept failed: %v", err)
-			// 瞬时错误后短暂退避，避免在持续故障时高频空转。
+			// 瞬时错误后短暂退避
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
