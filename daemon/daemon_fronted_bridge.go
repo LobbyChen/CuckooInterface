@@ -6,6 +6,7 @@ import (
 	"CuckooInterface/core/constant"
 	IPC "CuckooInterface/core/ipc"
 	"CuckooInterface/core/logger"
+	"CuckooInterface/core/utils"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -78,31 +79,72 @@ func (ipc *DaemonIpcInterface) HandleRequest() {
 	}
 }
 
-// handleConnection 在单个连接上完成一次请求-响应
+// handleConnection 在单个连接上完成"握手 + 一次请求-响应"。
+// Daemon 管道控制 Core 生命周期（start/stop/restart），属于敏感操作，
+// 必须先通过共享密钥 auth 握手；未握手的连接直接断开，不处理业务包。
 func (ipc *DaemonIpcInterface) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	data, err := IPC.ReadSinglePacket(conn)
 	if err != nil {
-		ipc.logger.Errorf("Daemon IPC read error: %v", err)
+		ipc.logger.Warnf("Daemon IPC read error: %v", err)
 		return
 	}
 
-	response := ipc.processCommand(data)
-
-	_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
-	sentData := IPC.GeneralPkg(response)
-	if _, err := conn.Write(sentData); err != nil {
-		ipc.logger.Errorf("Daemon IPC write error: %v", err)
+	// —— 强制握手 ——
+	var handshake IPC.IpcRequest
+	if err := json.Unmarshal(data, &handshake); err != nil || handshake.Method != IPC.MethodAuth {
+		ipc.logger.Warn("Daemon IPC connection rejected: auth handshake required")
+		return
 	}
+	var authParams IPC.AuthParams
+	if err := json.Unmarshal(handshake.Params, &authParams); err != nil || !utils.VerifyIPCSecret(authParams.Secret) {
+		ipc.writeResp(conn, ipc.errorResp(handshake.ID, "authentication failed"))
+		ipc.logger.Warn("Daemon IPC auth handshake failed: invalid shared secret")
+		return
+	}
+	if !ipc.writeResp(conn, ipc.successResp(handshake.ID, mustMarshalJSON(true))) {
+		return
+	}
+
+	// —— 业务请求 ——
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	data, err = IPC.ReadSinglePacket(conn)
+	if err != nil {
+		ipc.logger.Warnf("Daemon IPC read business packet error: %v", err)
+		return
+	}
+	ipc.writeResp(conn, ipc.processCommand(data))
+}
+
+func (ipc *DaemonIpcInterface) writeResp(conn net.Conn, payload []byte) bool {
+	_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
+	if _, err := conn.Write(IPC.GeneralPkg(payload)); err != nil {
+		ipc.logger.Warnf("Daemon IPC write error: %v", err)
+		return false
+	}
+	return true
+}
+
+func mustMarshalJSON(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("null")
+	}
+	return b
 }
 
 // processCommand 解析 JSON-RPC 请求并分发处理
 func (ipc *DaemonIpcInterface) processCommand(data []byte) []byte {
 	var req IPC.IpcRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		return ipc.errorResp(0, "invalid request: "+err.Error())
+		// 不回显内部解析错误细节，防止信息泄露
+		return ipc.errorResp(0, "invalid request")
+	}
+	// auth 只允许作为握手包出现，不允许绕过握手直接调用
+	if req.Method == IPC.MethodAuth {
+		return ipc.errorResp(req.ID, "unauthorized")
 	}
 
 	var (

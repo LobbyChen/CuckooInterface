@@ -31,10 +31,11 @@ func isDaemon() bool {
 	case constant.DameonModeArgData:
 		return true
 	case constant.NormalModeArgData:
-		return true
+		return false
 	case "":
-		// 默认采用dameon模式启动
+		// 默认采用 daemon 模式启动
 		return true
 	}
+	// 未知启动类型：按守护进程处理，但调用方应校验参数合法性
 	return true
 }

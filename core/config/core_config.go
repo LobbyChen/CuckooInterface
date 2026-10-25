@@ -164,15 +164,47 @@ func writeCoreConfigFile(fp string, cfg *CoreConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(fp, data, 0666)
+	// 配置文件包含 ServiceUserSID 等参与管道 SDDL 拼接的敏感字段，
+	// 必须以仅当前用户可读写（0600）落盘，防止低权限用户篡改实现提权。
+	if err := os.MkdirAll(filepath.Dir(fp), 0755); err != nil {
+		return err
+	}
+	tmp := fp + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, fp)
+}
+
+// validSIDPattern 校验 SID 是否为合法的 "S-1-x-y[...]" 形式（仅十进制子授权），
+// 防止畸形字符串注入命名管道的 SDDL。
+func isValidServiceSID(sid string) bool {
+	parts := strings.Split(sid, "-")
+	if len(parts) < 3 || parts[0] != "S" || parts[1] != "1" {
+		return false
+	}
+	for i, p := range parts {
+		if i == 0 || i == 1 {
+			continue
+		}
+		if p == "" {
+			return false
+		}
+		for _, ch := range p {
+			if ch < '0' || ch > '9' {
+				// 十六进制子授权以 0x 开头，此处保守拒绝一切非十进制字符
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // CorePipeSecurityDescriptor 返回 Core 命名管道的 SDDL。
 // 普通用户模式返回空串（使用默认 ACL）；服务模式下仅额外授权安装服务时的用户 SID。
 func CorePipeSecurityDescriptor() string {
 	sid := strings.TrimSpace(GetCoreConfig().ServiceUserSID)
-	if sid == "" || !strings.HasPrefix(sid, "S-1-") ||
-		strings.ContainsAny(sid, `()\"`) {
+	if sid == "" || !isValidServiceSID(sid) {
 		return ""
 	}
 	return fmt.Sprintf("D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;%s)", sid)

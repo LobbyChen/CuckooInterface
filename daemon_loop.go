@@ -200,7 +200,11 @@ func startCoreProcess(log *logger.Logger) error {
 	return nil
 }
 
-// stopCoreProcess 强制终止 Core 子进程
+// stopCoreProcess 优雅终止 Core 子进程：
+//  1. 先向进程投递 SIGTERM（Windows 上会触发 Go signal.Notify 处理器），
+//     让 Core 有机会执行 defer 清理（关闭 IPC 管道、ShutdownAll 内核、刷日志）；
+//  2. 等待最多 gracefulStopTimeout，期间轮询进程状态；
+//  3. 超时仍未退出则 Kill 强杀兜底。
 func stopCoreProcess(log *logger.Logger) error {
 	coreMu.Lock()
 	defer coreMu.Unlock()
@@ -209,14 +213,92 @@ func stopCoreProcess(log *logger.Logger) error {
 		return nil
 	}
 
-	if err := coreCmd.Process.Kill(); err != nil {
-		return fmt.Errorf("failed to kill Core process: %w", err)
+	pid := coreCmd.Process.Pid
+	cmd := coreCmd
+
+	// 第一步：请求优雅退出
+	if err := coreCmd.Process.Signal(syscall.SIGTERM); err != nil {
+		// 某些 Windows 场景不支持 Signal（如进程已退出/权限问题），降级为直接 Kill
+		log.Warnf("SIGTERM to Core (pid %d) failed: %v; falling back to kill", pid, err)
+		if kerr := cmd.Process.Kill(); kerr != nil {
+			return fmt.Errorf("failed to kill Core process: %w", kerr)
+		}
+		coreRunning = false
+		coreCmd = nil
+		log.Infof("Core process (pid %d) killed", pid)
+		return nil
 	}
 
+	// 第二步：带超时地等待进程真正退出。
+	// 注意不能调用 cmd.Wait()——后台协程已经持有该 Wait；这里用
+	// FindProcess+Signal(0)/Kill 的轮询方式探测存活状态。
+	deadline := time.Now().Add(gracefulStopTimeout)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			coreMu.Unlock()
+			// 等待后台 Wait 协程把状态字段复位（有锁保护，短暂自旋）
+			waitCoreStateCleared(cmd, 2*time.Second)
+			coreMu.Lock()
+			if coreCmd == cmd {
+				coreRunning = false
+				coreCmd = nil
+			}
+			log.Infof("Core process (pid %d) exited gracefully", pid)
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 第三步：超时强杀兜底
+	if err := cmd.Process.Kill(); err != nil {
+		return fmt.Errorf("failed to force kill Core process after graceful timeout: %w", err)
+	}
 	coreRunning = false
 	coreCmd = nil
-	log.Info("Core process killed")
+	log.Warnf("Core process (pid %d) did not exit within %v; killed", pid, gracefulStopTimeout)
 	return nil
+}
+
+const gracefulStopTimeout = 8 * time.Second
+
+// processAlive 探测 pid 是否仍在运行。
+// 注意：本程序的目标平台是 Windows（核心依赖 CGO/命名管道），Windows 上
+// os.FindProcess 对不存在的进程返回错误，存在但无权限时 Signal(0) 返回
+// ERROR_ACCESS_DENIED——两种情况都按"存活/未知"处理，由最终 Kill 兜底。
+func processAlive(pid int) bool {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = p.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errno, ok := err.(syscall.Errno); ok {
+		const errorAccessDenied = syscall.Errno(5)
+		if errno == errorAccessDenied {
+			// 进程存在但当前用户无权向其发送信号
+			return true
+		}
+		// 其它 Win32 错误（如 ERROR_INVALID_HANDLE/ESRCH）视为进程已退出
+		return false
+	}
+	// 非 Errno 类错误（例如 Unix 上的 "not supported"）：保守认为存活
+	return true
+}
+
+// waitCoreStateCleared 等待 startCoreProcess 中的后台 Wait 协程完成状态复位。
+func waitCoreStateCleared(cmd *exec.Cmd, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		coreMu.Lock()
+		done := coreCmd != cmd
+		coreMu.Unlock()
+		if done {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // shouldRestartCore 判断是否需要重启 Core

@@ -241,6 +241,16 @@ func allocCHostAPI(_ *HostAPI) *C.CuckooHostAPI {
 }
 
 func (k *Kernel) Meta() (kernelID, kernelName, version string, runtime string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.MetaLocked()
+}
+
+// MetaLocked 读取 C 侧元数据；调用方必须已持有 k.mu。
+func (k *Kernel) MetaLocked() (kernelID, kernelName, version string, runtime string) {
+	if k.closed || k.sandboxHandle == nil {
+		return "", "", "", ""
+	}
 	cID := make([]byte, 64)
 	cName := make([]byte, 64)
 	cVer := make([]byte, 32)
@@ -296,10 +306,17 @@ func (k *Kernel) LoadPlugin(pluginPath, manifestJSON string) (*PluginDescriptor,
 	}
 	return convertDescriptor(&cDesc), nil
 }
+// TriggerCallback 由事件总线 Worker 池异步调用，将事件投递给 C 侧监听器。
+//
+// 关键安全点：Worker 任务与插件卸载/Kernel 销毁是并发的。必须在持有 k.mu
+// 的整个区间内检查存活状态并执行 C 调用——Destroy/ShutdownRuntime 同样持
+// k.mu 置位 closed 并释放句柄，二者互斥可彻底避免对已销毁 sandbox 句柄的
+// use-after-free（旧实现无锁读 sandboxHandle，存在竞态窗口）。
 func (k *Kernel) TriggerCallback(handle PluginHandle, listener *ListenerRecord, jsonPayload string) {
-	// 事件 Worker 池异步调用
-	if k.sandboxHandle == nil {
-		return
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
+		return // Kernel 已关闭：静默丢弃在途事件
 	}
 	cPayload := C.CString(jsonPayload)
 	defer C.free(unsafe.Pointer(cPayload))
@@ -311,7 +328,14 @@ func (k *Kernel) TriggerCallback(handle PluginHandle, listener *ListenerRecord, 
 	cListener.function = listener.Function
 	C.sandbox_trigger_callback(k.sandboxHandle, C.CuckooPluginHandle(handle), &cListener, cPayload)
 }
+
+// UnloadPlugin 卸载指定插件句柄。同样需在锁内校验存活，防止对已销毁句柄操作。
 func (k *Kernel) UnloadPlugin(handle PluginHandle) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
+		return
+	}
 	C.sandbox_unload_plugin(k.sandboxHandle, C.CuckooPluginHandle(handle))
 }
 func (k *Kernel) GetChan() chan struct{} {
@@ -412,8 +436,21 @@ func (k *Kernel) InvokeOperation(
 	})
 }
 
-// StartLoop 同步启动 Kernel 循环
+// StartLoopGuarded 在持有 Kernel 内部互斥锁的整个区间内启动事件循环，
+// 是外部调用方（如 KernelManager）应使用的安全入口。
+func (k *Kernel) StartLoopGuarded() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.StartLoop()
+}
+
+// StartLoop 同步启动 Kernel 循环。
+// 调用前必须持有 k.mu（由 KernelManager 保证），以确保句柄在启动期间
+// 不会被并发 Shutdown/Destroy 释放；内部不再自加锁，避免重复加锁死锁。
 func (k *Kernel) StartLoop() error {
+	if k.closed || k.sandboxHandle == nil {
+		return fmt.Errorf("cuckoo: kernel is already closed")
+	}
 	crashCh := make(chan struct{})
 	go func() {
 		C.sandbox_wait_for_crash(k.sandboxHandle)
@@ -423,14 +460,16 @@ func (k *Kernel) StartLoop() error {
 	go func() {
 		C.sandbox_start_loop_async(k.sandboxHandle, k.hostAPI)
 	}()
-	// 等待 into_loop_report 被调用，崩溃事件触发，或者超时
+	// 等待 into_loop_report 被调用，崩溃事件触发，或者超时。
+	// loopStartedCh 为容量 1 的缓冲通道：即使 into_loop_report 早于此处
+	// 挂接 select 到达，信号也不会丢失。
 	select {
 	case <-k.loopStartedCh:
-		_, name, _, _ := k.Meta()
+		_, name, _, _ := k.MetaLocked()
 		logger.GetLogger().Infof("kernel %s entered loop", name)
 		return nil // 成功进入循环
 	case <-crashCh:
-		reason := k.getCrashReason()
+		reason := k.getCrashReasonLocked()
 		api := currentHostAPI()
 		if api != nil && api.Panic != nil {
 			api.Panic(reason)
@@ -454,12 +493,29 @@ func (k *Kernel) ShutdownRuntime() {
 
 	k.closed = true
 }
+// IsAlive 报告 sandbox 是否仍在运行。加锁读取句柄，避免与 Destroy 竞态；
+// 调用方（handleCrashIfNeeded / StartLoop）均在未持 k.mu 的路径上使用本方法。
 func (k *Kernel) IsAlive() bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed || k.sandboxHandle == nil {
+		return false
+	}
 	return C.is_sandbox_alive(k.sandboxHandle) == 1
 }
 
-// getCrashReason 从 C 侧读取 VEH 记录的崩溃原因
+// getCrashReason 从 C 侧读取 VEH 记录的崩溃原因（同样需保证句柄有效）。
 func (k *Kernel) getCrashReason() string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.getCrashReasonLocked()
+}
+
+// getCrashReasonLocked 是 getCrashReason 的无锁版本，调用方必须已持有 k.mu。
+func (k *Kernel) getCrashReasonLocked() string {
+	if k.closed || k.sandboxHandle == nil {
+		return ""
+	}
 	cbuf := make([]byte, 128)
 	C.sandbox_get_crash_reason(k.sandboxHandle, (*C.char)(unsafe.Pointer(&cbuf[0])), C.int(len(cbuf)))
 	return C.GoString((*C.char)(unsafe.Pointer(&cbuf[0])))
@@ -543,5 +599,7 @@ func NewKernelWithDLL(path string) (*Kernel, error) {
 	if handle == nil {
 		return nil, fmt.Errorf("failed to create sandbox for DLL: %s", path)
 	}
-	return &Kernel{sandboxHandle: handle, loopStartedCh: make(chan struct{})}, nil
+	// 容量为 1 的缓冲通道：C 侧进入主循环的上报可能早于 Go 侧
+	// StartLoop 挂接等待，非缓冲通道会丢失该信号导致启动等待超时。
+	return &Kernel{sandboxHandle: handle, loopStartedCh: make(chan struct{}, 1)}, nil
 }

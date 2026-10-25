@@ -5,7 +5,6 @@ package logger
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -198,7 +197,7 @@ type Logger struct {
 
 var (
 	globalLogger *Logger
-	once         sync.Once
+	initMu       sync.Mutex
 )
 
 // DefaultLoggerConfig 返回默认配置
@@ -215,22 +214,35 @@ func DefaultLoggerConfig() LoggerConfig {
 	}
 }
 
-// Init 初始化全局日志实例
+// Init 初始化全局日志实例。
+// 首次调用创建实例；后续显式传入配置时会重建实例（旧的实现使用
+// sync.Once，导致同一二进制中不同启动模式第二次 Init 静默失效）。
+// 不传配置的调用仅保证惰性初始化，不会覆盖已有实例。
 func Init(cfg ...LoggerConfig) *Logger {
-	once.Do(func() {
-		c := DefaultLoggerConfig()
-		if len(cfg) > 0 {
-			c = cfg[0]
-		}
-		globalLogger = NewLogger(c)
-	})
+	initMu.Lock()
+	defer initMu.Unlock()
+	if globalLogger != nil && len(cfg) == 0 {
+		return globalLogger
+	}
+	c := DefaultLoggerConfig()
+	if len(cfg) > 0 {
+		c = cfg[0]
+	}
+	prev := globalLogger
+	globalLogger = NewLogger(c)
+	// 重建时关闭旧实例的文件句柄，避免文件描述符泄漏
+	if prev != nil {
+		_ = prev.Close()
+	}
 	return globalLogger
 }
 
 // GetLogger 获取全局日志实例
 func GetLogger() *Logger {
+	initMu.Lock()
+	defer initMu.Unlock()
 	if globalLogger == nil {
-		return Init()
+		globalLogger = NewLogger(DefaultLoggerConfig())
 	}
 	return globalLogger
 }
@@ -512,6 +524,13 @@ func (l *Logger) GetCachedLogsLen() int {
 	return l.cachedCore.Len()
 }
 
+// Fatalf 记录致命错误后退出进程。
+// 与 zap 的 Fatal 语义保持一致：先写入所有 Core（含文件与内存缓存），
+// 再 Sync 刷盘，最后以非零状态码退出；避免绕过 zap 导致日志不落盘。
 func (l *Logger) Fatalf(format string, args ...interface{}) {
-	log.Fatal(fmt.Sprintf(format, args...))
+	l.zapLog.Fatalf(format, args...)
+	// zap 的 Fatal 内部会调用 os.Exit，正常情况下不会执行到这里；
+	// 若底层 logger 被替换为不退出的实现，这里兜底保证 Fatal 语义。
+	_ = l.Sync()
+	os.Exit(1)
 }

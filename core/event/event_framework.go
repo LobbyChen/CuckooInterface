@@ -53,8 +53,10 @@ type EmitTask struct {
 func (e EmitTask) GetName() string {
 	return e.eventName
 }
+// GetTimeStamp 返回毫秒级 Unix 时间戳。秒级精度会导致同一秒内的多条
+// 事件在按时间戳排序时顺序不稳定，前端展示会错乱。
 func (e EmitTask) GetTimeStamp() int64 {
-	return e.timestamp.Unix()
+	return e.timestamp.UnixMilli()
 }
 func (e EmitTask) GetPayLoad() string {
 	return e.payload
@@ -80,7 +82,10 @@ func NewEventBus() *EventBus {
 	return bus
 }
 
-// eventWorker 消费事件任务队列
+// eventWorker 消费事件任务队列。
+// 注意：任务从 Emit 投递到 Worker 取出之间存在时间窗口，期间接收方插件
+// 可能已被卸载（kernel 销毁）。TriggerCallback 内部会在持锁状态下校验
+// kernel 存活标志，对已销毁句柄直接返回错误，避免 use-after-free。
 func (bus *EventBus) eventWorker() {
 	for task := range bus.taskCh {
 		func() {
@@ -183,11 +188,13 @@ func (bus *EventBus) Emit(eventName string, payload string) {
 	}
 	// 累加后端维护的今日事件计数（仅统计有效投递的已注册事件）
 	bus.countTodayEvent()
+	// 记录到历史缓冲区：该记录只描述"发生过一次 Emit"，与具体接收者无关，
+	// 因此不持有 receiverEntry；且必须在 evt.lock 临界区之外完成，
+	// 避免不必要地扩大读锁范围。
+	bus.eventQueue.Push(&EmitTask{eventName: eventName, payload: payload, timestamp: time.Now()})
 	evt.lock.RLock()
 	receivers := make([]receiverEntry, len(evt.receivers))
 	copy(receivers, evt.receivers)
-	// 投递到buffer
-	bus.eventQueue.Push(&EmitTask{rec: receiverEntry{}, eventName: eventName, payload: payload, timestamp: time.Now()})
 	evt.lock.RUnlock()
 	// 将每个接收者的触发任务投递到 Worker 队列
 	for _, rec := range receivers {

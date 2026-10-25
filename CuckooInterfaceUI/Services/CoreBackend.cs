@@ -27,6 +27,42 @@ namespace CuckooInterfaceUI.Services
         private const int ConnectTimeoutMilliseconds = 1500;
         private const int ConnectAttempts = 3;
 
+        // IPC 共享密钥：与 Go 端 core/utils/ipcsecret.go 约定一致，
+        // 存放于当前用户配置目录下的 CuckooInterface.ipc.secret（0600）。
+        // 所有业务调用前必须在同一连接上完成 "auth" 握手。
+        private static readonly Lazy<string?> SharedSecretHolder = new(() => LoadIpcSharedSecret());
+
+        private static string? LoadIpcSharedSecret()
+        {
+            try
+            {
+                var dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrEmpty(dir))
+                    return null;
+                var path = Path.Combine(dir, "CuckooInterface", "CuckooInterface.ipc.secret");
+                if (!File.Exists(path))
+                    return null;
+                var secret = File.ReadAllText(path).Trim();
+                return IsHexOfLength(secret, 64) ? secret : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool IsHexOfLength(string s, int len)
+        {
+            if (s.Length != len)
+                return false;
+            foreach (var c in s)
+            {
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                    return false;
+            }
+            return true;
+        }
+
         private static readonly Lazy<CoreBackend> InstanceHolder = new(() => new CoreBackend());
         private static long _requestId;
 
@@ -296,6 +332,11 @@ namespace CuckooInterfaceUI.Services
                 try
                 {
                     // 建立连接成功后不重发请求，避免非幂等操作在“请求已到达但响应丢失”时重复执行。
+                    // 1) 强制 auth 握手：与 Go 端约定，任何业务方法前必须先在同一管道连接上
+                    //    发送 {"method":"auth","params":{"secret":...}} 并收到成功响应。
+                    await PerformAuthHandshakeAsync(pipe, pipeName, cancellationToken);
+
+                    // 2) 业务请求
                     await WritePacketAsync(pipe, requestBytes, cancellationToken);
                     var responseBytes = await ReadPacketAsync(pipe, cancellationToken);
                     var result = DeserializeResponse<T>(responseBytes, request.Id);
@@ -329,6 +370,42 @@ namespace CuckooInterfaceUI.Services
 
         private static Task ConnectAsync(NamedPipeClientStream pipe, int timeoutMilliseconds, CancellationToken cancellationToken) =>
             pipe.ConnectAsync(timeoutMilliseconds, cancellationToken);
+
+        /// <summary>
+        /// 与 Go 端约定的强制 auth 握手：在同一连接的首个数据包中发送
+        /// {"id":..., "method":"auth", "params":{"secret":"<64位hex>"}}，
+        /// 并校验响应 id、success 及 data==true。任何一步失败都抛出
+        /// BackendConnectionException，调用方将断开并重试。
+        /// </summary>
+        private static async Task PerformAuthHandshakeAsync(Stream pipe, string pipeName, CancellationToken cancellationToken)
+        {
+            var secret = SharedSecretHolder.Value;
+            if (string.IsNullOrEmpty(secret))
+                throw new InvalidOperationException(
+                    "IPC shared secret is unavailable. Ensure the Cuckoo Core/Daemon backend has been started at least once.");
+
+            var request = new IpcRequest
+            {
+                Id = Interlocked.Increment(ref _requestId),
+                Method = "auth",
+                Params = JsonSerializer.SerializeToElement(new { secret }, JsonOptions)
+            };
+            var requestBytes = JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions);
+
+            await WritePacketAsync(pipe, requestBytes, cancellationToken);
+            var responseBytes = await ReadPacketAsync(pipe, cancellationToken);
+
+            var response = JsonSerializer.Deserialize<IpcResponse>(responseBytes, JsonOptions)
+                           ?? throw new InvalidDataException("IPC auth response is empty.");
+            if (response.Id != request.Id || !response.Success)
+                throw new BackendConnectionException(pipeName, new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(response.Error) ? "IPC authentication failed." : response.Error));
+
+            // data 应为 true；宽松处理：仅在显式为 false 时判定失败。
+            if (response.Data.ValueKind == JsonValueKind.False)
+                throw new BackendConnectionException(pipeName,
+                    new InvalidOperationException("IPC authentication rejected by backend."));
+        }
 
         private static async Task WritePacketAsync(Stream stream, byte[] payload, CancellationToken cancellationToken)
         {

@@ -62,6 +62,22 @@ func (km *KernelManager) InjectPluginFileManager(pm *PluginFileManager) {
 	km.FileManager = pm
 }
 
+// lateKernelReaper 在 LoadSingleKernel 超时/取消后被调用。后台加载协程
+// 可能仍会成功创建 Kernel；若无人接收其结果，DLL sandbox 句柄将泄漏。
+// resultCh 带缓冲，协程本身不会阻塞；这里等待迟到的结果并销毁之。
+func lateKernelReaper(ch <-chan loadResult, dllPath string) {
+	res := <-ch
+	if res.k != nil {
+		res.k.Destroy()
+		fmt.Printf("[KernelManager] Discarded late kernel load for %s after timeout\n", dllPath)
+	}
+}
+
+type loadResult struct {
+	k   *plugins.Kernel
+	err error
+}
+
 // 加载单一插件核心
 func (km *KernelManager) LoadSingleKernel(kernel *SinglePluginFile, ctx context.Context) error {
 	// 检查有无此Kernel
@@ -69,10 +85,6 @@ func (km *KernelManager) LoadSingleKernel(kernel *SinglePluginFile, ctx context.
 		return errors.New("kernel plugin not found in kernel manager")
 	}
 	dllPath := filepath.Join(kernel.dir, constantPkg.KernelEntrance)
-	type loadResult struct {
-		k   *plugins.Kernel
-		err error
-	}
 	resultCh := make(chan loadResult, 1)
 	go func() {
 		defer func() {
@@ -87,8 +99,12 @@ func (km *KernelManager) LoadSingleKernel(kernel *SinglePluginFile, ctx context.
 	select {
 	case res = <-resultCh:
 	case <-ctx.Done():
+		// 超时/取消后后台协程仍可能成功创建 Kernel，其结果若不接收并销毁，
+		// 将导致 DLL 句柄永久泄漏。挂载一次性回收协程处理迟到结果。
+		go lateKernelReaper(resultCh, dllPath)
 		return fmt.Errorf("loading kernel DLL cancelled: %w", ctx.Err())
 	case <-time.After(kernelLoadTimeout):
+		go lateKernelReaper(resultCh, dllPath)
 		return fmt.Errorf("loading kernel DLL timed out after %v", kernelLoadTimeout)
 	}
 	if res.err != nil {
@@ -295,7 +311,12 @@ func (km *KernelManager) StartAllLoops() {
 				}
 				km.lock.Unlock()
 			}()
-			if err := k.StartLoop(); err != nil {
+			// 在 Kernel 自身互斥保护下启动事件循环：StartLoopLocked 要求
+			// 调用方持有内部 mu（由 StartLoopGuarded 封装），确保启动窗口内
+			// 句柄不会被并发 ShutdownRuntime/Destroy 释放。锁序恒为
+			// km.lock → k.mu，且本函数在摘取快照后已释放 km.lock，无环路风险。
+			err := k.StartLoopGuarded()
+			if err != nil {
 				loopErr = err
 				fmt.Printf("[KernelManager] Failed to start kernel loop: %v\n", err)
 			}
@@ -303,11 +324,16 @@ func (km *KernelManager) StartAllLoops() {
 	}
 }
 
-// ShutdownAll 关闭所有 Kernel
+// ShutdownAll 关闭所有 Kernel。
+// 先在锁内摘取快照并将内部列表置空，再在锁外执行 Destroy/ShutdownRuntime：
+// 销毁路径可能触发 C 回调线程进入 dispatchLoopReport 等需要 km.lock 的
+// 入口，若在持锁状态下调用 Destroy 会形成死锁窗口。
 func (km *KernelManager) ShutdownAll() {
 	km.lock.Lock()
-	defer km.lock.Unlock()
-	for _, k := range km.kernels {
+	entries := km.kernels
+	km.kernels = nil
+	km.lock.Unlock()
+	for _, k := range entries {
 		if k.isInit {
 			k.kernel.ShutdownRuntime()
 		}

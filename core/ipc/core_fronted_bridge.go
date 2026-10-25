@@ -115,7 +115,8 @@ func (ipc *CoreIpcInterface) waitForReceivedData() ([]byte, error) {
 }
 
 // ServeLoop 持续接受前端连接，读取请求并返回响应。
-// 每个连接处理一次请求-响应后关闭，由前端重新连接发起下一次调用。
+// 每个连接必须先完成共享密钥握手；握手成功后该连接可连续处理多次
+// 请求-响应（复用连接），直到对端关闭或超过空闲时限。
 func (ipc *CoreIpcInterface) ServeLoop() {
 	for {
 		conn, err := ipc.listener.Accept()
@@ -123,11 +124,12 @@ func (ipc *CoreIpcInterface) ServeLoop() {
 			ipc.logger.Errorf("IPC accept failed: %v", err)
 			return
 		}
-		ipc.handleConnection(conn)
+		go ipc.handleAuthenticatedSession(conn)
 	}
 }
 
-// handleConnection 在单个连接上完成一次请求-响应
+// handleConnection 在单个连接上完成一次"握手+请求-响应"后即断开，
+// 供一次性调用场景使用。
 func (ipc *CoreIpcInterface) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
@@ -139,8 +141,14 @@ func (ipc *CoreIpcInterface) handleConnection(conn net.Conn) {
 		return
 	}
 
-	// 分发处理
-	respData := ipc.HandleRequest(reqData)
+	// 强制握手：命名管道暴露插件安装/事件发布等敏感操作，
+	// 未通过共享密钥 auth 握手的连接一律拒绝并立即断开（不处理业务包）。
+	if !ipc.authenticate(conn, reqData) {
+		return
+	}
+
+	// 握手成功后在同一连接上等待首个业务请求。
+	respData := ipc.readAndDispatchBusiness(conn)
 
 	// 写入响应
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
@@ -148,6 +156,79 @@ func (ipc *CoreIpcInterface) handleConnection(conn net.Conn) {
 	if _, err := conn.Write(sentData); err != nil {
 		ipc.logger.Warnf("IPC write failed: %v", err)
 	}
+}
+
+// readAndDispatchBusiness 读取一个业务请求包并分发；读失败时返回错误响应。
+func (ipc *CoreIpcInterface) readAndDispatchBusiness(conn net.Conn) []byte {
+	_ = conn.SetReadDeadline(time.Now().Add(time.Minute * 2))
+	reqData, err := ReadSinglePacket(conn)
+	if err != nil {
+		return ipc.errorResp(0, "bad request")
+	}
+	return ipc.HandleRequest(reqData)
+}
+
+// handleAuthenticatedSession 在同一连接上完成握手后循环处理业务请求。
+func (ipc *CoreIpcInterface) handleAuthenticatedSession(conn net.Conn) {
+	defer conn.Close()
+
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	reqData, err := ReadSinglePacket(conn)
+	if err != nil {
+		ipc.logger.Warnf("IPC read failed: %v", err)
+		return
+	}
+	if !ipc.authenticate(conn, reqData) {
+		return
+	}
+
+	for {
+		// 已认证会话给予更长的空闲窗口，但必须有上限，防止连接悬挂耗尽句柄。
+		_ = conn.SetReadDeadline(time.Now().Add(time.Minute * 2))
+		reqData, err := ReadSinglePacket(conn)
+		if err != nil {
+			return // 对端关闭或超时，正常结束会话
+		}
+		respData := ipc.HandleRequest(reqData)
+		_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
+		if _, err := conn.Write(GeneralPkg(respData)); err != nil {
+			return
+		}
+	}
+}
+
+// authenticate 校验当前请求包是否为携带正确共享密钥的 auth 握手。
+// 返回 true 表示该包既是握手包且密钥正确，调用方可继续按业务请求分发；
+// 其余情况（非 auth 方法 / 密钥错误 / 读写失败）均返回 false 并要求断开。
+func (ipc *CoreIpcInterface) authenticate(conn net.Conn, reqData []byte) bool {
+	var req IpcRequest
+	if err := json.Unmarshal(reqData, &req); err != nil || req.Method != MethodAuth {
+		ipc.logger.Warn("IPC connection rejected: auth handshake required before any method")
+		return false
+	}
+
+	var params AuthParams
+	if err := json.Unmarshal(req.Params, &params); err != nil || !utils.VerifyIPCSecret(params.Secret) {
+		// 只回笼统错误，避免泄露密钥格式等内部细节
+		_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 2))
+		_, _ = conn.Write(GeneralPkg(ipc.errorResp(req.ID, "authentication failed")))
+		ipc.logger.Warn("IPC auth handshake failed: invalid shared secret")
+		return false
+	}
+
+	_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 2))
+	if _, err := conn.Write(GeneralPkg(ipc.successResp(req.ID, mustMarshal(true)))); err != nil {
+		return false
+	}
+	return true
+}
+
+func mustMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("null")
+	}
+	return b
 }
 
 // 请求分发

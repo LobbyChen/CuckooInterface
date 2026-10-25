@@ -73,6 +73,17 @@ const (
 	MethodDaemonRestartCore = "restartCore"
 )
 
+// MethodAuth 是所有受保护管道的强制首包握手方法。
+// 命名管道默认允许同会话进程连接，而本 IPC 暴露插件安装、Core 生命周期等
+// 敏感操作，因此客户端必须先以共享密钥完成 auth 握手，服务端验证通过前
+// 不处理任何业务方法。
+const MethodAuth = "auth"
+
+// AuthParams 握手参数：携带当前用户独占文件中的 IPC 共享密钥。
+type AuthParams struct {
+	Secret string `json:"secret"`
+}
+
 // 请求参数类型
 
 type TogglePluginParams struct {

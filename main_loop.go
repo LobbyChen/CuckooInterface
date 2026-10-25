@@ -38,7 +38,11 @@ func runMainLoop(ctx context.Context, isService bool) {
 	if utils.IsFileExist(cfgPath) {
 		cfgManager.LoadValidConfig(cfgPath)
 	}
-	config.LoadCoreConfig(cfgPath)
+	if err := config.LoadCoreConfig(cfgPath); err != nil {
+		// 配置损坏时 LoadCoreConfig 已回退到默认值，此处仅告警不中断启动；
+		// 静默忽略会掩盖磁盘/解析问题，导致运维无法感知配置漂移。
+		fmt.Printf("[Core] Warning: failed to load core config, falling back to defaults: %v\n", err)
+	}
 	globalCfg := config.GetCoreConfig()
 	if globalCfg.SingleInstance {
 		// 确保单实例运行
