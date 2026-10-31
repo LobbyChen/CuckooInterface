@@ -6,7 +6,7 @@ REM  CuckooInterface Auto-Build Script
 REM  Builds: Go core, WPF UI, PythonKernel, LuaKernel
 REM  Output: bin/ directory with all binaries + Kernel packages
 REM ============================================================
-setlocal EnableDelayedExpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 set "ROOT=%cd%"
@@ -48,6 +48,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
+set "VSINSTALL="
 where gcc >nul 2>&1
 if not errorlevel 1 (
     where g++ >nul 2>&1
@@ -58,8 +59,22 @@ if not errorlevel 1 (
 ) else (
     where cl >nul 2>&1
     if errorlevel 1 (
-        echo [ERROR] No C++ compiler found. Install MinGW-w64 or Visual Studio C++ tools.
-        exit /b 1
+        REM cl is usually only available in a VS Developer Prompt.
+        REM Locate Visual Studio and initialize the MSVC environment.
+        set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        if not exist "!VSWHERE!" set "VSWHERE=%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
+        if exist "!VSWHERE!" (
+            for /f "usebackq delims=" %%V in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%V"
+        )
+        if defined VSINSTALL (
+            echo       Initializing MSVC environment: !VSINSTALL!
+            call "!VSINSTALL!\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+        )
+        where cl >nul 2>&1
+        if errorlevel 1 (
+            echo [ERROR] No C++ compiler found. Install MinGW-w64 or Visual Studio C++ tools.
+            exit /b 1
+        )
     )
 )
 
@@ -68,7 +83,7 @@ echo       .NET:       OK
 echo       CMake:      OK
 echo       PowerShell: OK
 echo       CXX:        OK
-echo       NOTE: PythonKernel no longer requires a local Python SDK.
+echo       NOTE: PythonKernel does not require a local Python SDK.
 echo.
 
 REM ------------------------------------------------------------
@@ -81,17 +96,22 @@ if exist "%BIN%" (
 mkdir "%BIN%"
 mkdir "%BIN%\user"
 mkdir "%BIN%\user\Kernel"
-echo       cleaning syso files
-del /s /q "*.syso"
+mkdir "%BIN%\user\Base"
+mkdir "%BIN%\user\Active"
+echo       Cleaning syso files...
+del /s /q "*.syso" >nul 2>&1
 echo       bin/ cleaned and created.
 echo.
 
 REM ------------------------------------------------------------
 REM  Step 2: Build Go main program
 REM ------------------------------------------------------------
-echo [2/7] Processing Icon&Metadata
-go install github.com/tc-hib/go-winres@latest
-go-winres make
+echo [2/7] Processing icon and metadata...
+go run github.com/tc-hib/go-winres@latest make
+if errorlevel 1 (
+    echo [ERROR] go-winres failed to generate Windows resources.
+    exit /b 1
+)
 echo [2/7] Building Go main program (CuckooInterface.exe)...
 go build -ldflags="-H windowsgui -s -w" -o "%BIN%\CuckooInterface.exe" .
 if errorlevel 1 (
@@ -123,10 +143,11 @@ if exist "build" (
     rmdir /s /q "build"
 )
 
-cmake -B build -S . -G "MinGW Makefiles"
+cmake -B build -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 if errorlevel 1 (
     echo       MinGW generator failed, trying default...
-    cmake -B build -S .
+    if exist "build\CMakeCache.txt" rmdir /s /q "build"
+    cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     if errorlevel 1 (
         echo [ERROR] CMake configure failed.
         cd /d "%ROOT%"
@@ -168,7 +189,6 @@ set "PKG=%TEMP%\CuckooPythonKernelPkg"
 if exist "%PKG%" rmdir /s /q "%PKG%"
 mkdir "%PKG%"
 mkdir "%PKG%\binary"
-mkdir "%PKG%\binary\python"
 mkdir "%PKG%\sdk"
 mkdir "%PKG%\sdk\cuckoo_sdk"
 
@@ -186,12 +206,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-xcopy /e /i /y "runtime\python" "%PKG%\binary\python" >nul
-if errorlevel 1 (
-    echo [ERROR] Failed to copy embedded Python runtime.
-    cd /d "%ROOT%"
-    exit /b 1
-)
+REM PythonKernel loads CPython from the target machine (stable ABI).
+REM The package does not bundle a Python runtime.
 
 copy /y "sdk\cuckoo_sdk\__init__.py" "%PKG%\sdk\cuckoo_sdk\" >nul
 if errorlevel 1 (
@@ -253,7 +269,7 @@ if errorlevel 1 (
 
 REM LuaKernel CMake build outputs:
 REM   build\Release\binary\export.dll
-REM Be tolerant of a non-config subdirectory output as well.
+REM Be tolerant of a config-less subdirectory as well.
 set "LUA_DLL="
 if exist "build\Release\binary\export.dll" (
     set "LUA_DLL=build\Release\binary\export.dll"
@@ -328,6 +344,7 @@ echo  Usage:
 echo    1. Run bin\CuckooInterface.exe to start the daemon
 echo    2. Right-click tray icon -^> Open UI
 echo    3. Place plugin zips in bin\user\Base\ or bin\user\Active\
+echo ============================================================
 echo.
 
 endlocal

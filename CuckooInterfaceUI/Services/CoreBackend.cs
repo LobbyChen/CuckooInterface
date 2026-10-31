@@ -87,6 +87,14 @@ namespace CuckooInterfaceUI.Services
         public Task<bool> InstallPluginAsync(string type, string path, CancellationToken cancellationToken = default) =>
             CallCoreAsync<bool>("installPlugin", new { type, path }, cancellationToken);
 
+        // ===== 插件配置 =====
+
+        public Task<PluginConfig> GetPluginConfigAsync(string id, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<PluginConfig>("getPluginConfig", new { id }, cancellationToken);
+
+        public Task<bool> SavePluginConfigAsync(string id, string config, CancellationToken cancellationToken = default) =>
+            CallCoreAsync<bool>("savePluginConfig", new { id, config }, cancellationToken);
+
         // ===== 事件 =====
 
         public async Task<List<EventRecord>> GetRecentEventsAsync(CancellationToken cancellationToken = default)

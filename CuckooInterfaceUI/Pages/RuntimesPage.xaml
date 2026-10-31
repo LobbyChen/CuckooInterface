@@ -224,7 +224,7 @@
                                         IsOpen="False"
                                         Margin="0,0,0,12" />
 
-                            <!-- 动态运行时选择（由 RuntimeManager 生成） -->
+
                             <Border x:Name="RuntimeSelectionCard"
                                     Background="{DynamicResource ControlFillColorDefaultBrush}"
                                     CornerRadius="8"

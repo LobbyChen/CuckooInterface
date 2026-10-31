@@ -15,6 +15,7 @@ import (
 	"net"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ type CoreIpcInterface struct {
 	pm   *plugin_manager.PluginManager
 	rm   *runtime_manager.Manager
 	ebus *event.EventBus
+	cfg  *config.CfgManager
 	once sync.Once
 
 	logger    *logger.Logger
@@ -37,12 +39,13 @@ type CoreIpcInterface struct {
 }
 
 // Init 注入核心组件依赖（仅生效一次）
-func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, rm *runtime_manager.Manager, ebus *event.EventBus, logger *logger.Logger) {
+func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, rm *runtime_manager.Manager, ebus *event.EventBus, cfg *config.CfgManager, logger *logger.Logger) {
 	ipc.once.Do(func() {
 		ipc.km = km
 		ipc.pfm = pfm
 		ipc.pm = pm
 		ipc.rm = rm
+		ipc.cfg = cfg
 		ipc.logger = logger
 		ipc.ebus = ebus
 		ipc.startTime = time.Now()
@@ -50,7 +53,7 @@ func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_
 }
 
 func (ipc *CoreIpcInterface) check() bool {
-	if ipc.km == nil || ipc.pfm == nil || ipc.pm == nil || ipc.rm == nil {
+	if ipc.km == nil || ipc.pfm == nil || ipc.pm == nil || ipc.rm == nil || ipc.cfg == nil {
 		return false
 	}
 	return true
@@ -179,6 +182,10 @@ func (ipc *CoreIpcInterface) HandleRequest(data []byte) []byte {
 		result, err = ipc.handleUnloadPlugin(req.Params)
 	case MethodInstallPlugin:
 		result, err = ipc.handleInstallPlugin(req.Params)
+	case MethodGetPluginConfig:
+		result, err = ipc.handleGetPluginConfig(req.Params)
+	case MethodSavePluginConfig:
+		result, err = ipc.handleSavePluginConfig(req.Params)
 	case MethodGetRecentEvents:
 		result, err = ipc.handleGetRecentEvents()
 	case MethodGetRegisteredEvents:
@@ -395,6 +402,10 @@ func (ipc *CoreIpcInterface) handleTogglePlugin(params json.RawMessage) (json.Ra
 	}
 
 	if p.Enabled {
+		// 手动启用时同样先落默认配置，保证插件加载阶段能读到配置。
+		if err := ipc.cfg.EnsureConfig(file.Meta.ID, file.Meta.DefaultConfig); err != nil {
+			return nil, fmt.Errorf("register plugin config failed: %w", err)
+		}
 		if err := ipc.pm.LoadPlugin(file); err != nil {
 			return nil, fmt.Errorf("load plugin failed: %w", err)
 		}
@@ -443,6 +454,9 @@ func (ipc *CoreIpcInterface) handleLoadPlugin(params json.RawMessage) (json.RawM
 	}
 	if file.Typo == constant.KERNEL {
 		return nil, fmt.Errorf("kernel plugin %s is managed by system and cannot be loaded manually", p.ID)
+	}
+	if err := ipc.cfg.EnsureConfig(file.Meta.ID, file.Meta.DefaultConfig); err != nil {
+		return nil, fmt.Errorf("register plugin config failed: %w", err)
 	}
 	if err := ipc.pm.LoadPlugin(file); err != nil {
 		return nil, err
@@ -502,6 +516,69 @@ func (ipc *CoreIpcInterface) findPluginFile(id string) *plugin_manager.SinglePlu
 		}
 	}
 	return nil
+}
+
+// 插件配置
+
+// configurablePlugin 查找可配置插件；Kernel 的运行时配置由 Kernel 控制面管理。
+func (ipc *CoreIpcInterface) configurablePlugin(id string) (*plugin_manager.SinglePluginFile, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("plugin id is required")
+	}
+	file := ipc.findPluginFile(id)
+	if file == nil {
+		return nil, fmt.Errorf("plugin %s not found", id)
+	}
+	if file.Typo == constant.KERNEL {
+		return nil, fmt.Errorf("kernel plugin %s has no plugin config", id)
+	}
+	return file, nil
+}
+
+func (ipc *CoreIpcInterface) handleGetPluginConfig(params json.RawMessage) (json.RawMessage, error) {
+	var p PluginConfigParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	file, err := ipc.configurablePlugin(p.ID)
+	if err != nil {
+		return nil, err
+	}
+	// 首次访问时用 META-INF.json 的 default_config 生成配置文件。
+	if err := ipc.cfg.EnsureConfig(file.Meta.ID, file.Meta.DefaultConfig); err != nil {
+		return nil, err
+	}
+	configString, err := ipc.cfg.GetConfig(file.Meta.ID)
+	if err != nil {
+		return nil, err
+	}
+	dto := PluginConfigDto{
+		PluginID: file.Meta.ID,
+		Config:   configString,
+	}
+	if page, ok := file.ConfigPagePath(); ok {
+		dto.ConfigPage = page
+	}
+	return json.Marshal(dto)
+}
+
+func (ipc *CoreIpcInterface) handleSavePluginConfig(params json.RawMessage) (json.RawMessage, error) {
+	var p SavePluginConfigParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	file, err := ipc.configurablePlugin(p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := ipc.cfg.EnsureConfig(file.Meta.ID, file.Meta.DefaultConfig); err != nil {
+		return nil, err
+	}
+	if err := ipc.cfg.SetConfig(file.Meta.ID, p.Config); err != nil {
+		return nil, err
+	}
+	ipc.logger.Infof("插件 [%s] 配置已更新", file.Meta.Name)
+	return json.Marshal(true)
 }
 
 // 事件

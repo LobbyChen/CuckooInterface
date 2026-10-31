@@ -23,6 +23,7 @@ CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插�
 请阅读
 - [Python SDK](./implement/Kernel/PythonKernel/sdk/cuckoo_sdk/sdk.md)
 - [Lua SDK](./implement/Kernel/LuaKernel/README.md)
+- [插件配置页面 SDK](./config_sdk.md)
 
 我们也鼓励编写第三方的其他编程语言SDK。
 我们预计会在下一个版本支持JVM语言。
@@ -97,7 +98,7 @@ CuckooInterface/
 ├── main_loop.go                 # Core 主循环（Normal 模式）
 ├── daemon_loop.go               # Daemon 主循环（托盘 / Core 保活）
 ├── constant.go                  # 进程间通信端口常量
-├── build.bat                    # 一键构建脚本（Go Core + WPF UI + Kernel）
+├── build.cmd                    # 一键构建脚本（Go Core + WPF UI + Kernel）
 ├── go.mod / go.sum              # Go 模块依赖
 ├── icon.ico / icon.png / icon.svg
 ├── LICENSE.txt
@@ -214,10 +215,10 @@ CuckooInterface/
 
 ### 一键构建（推荐）
 
-根目录提供 `build.bat`，自动完成 Go Core、WPF UI 与 PythonKernel 的构建与打包：
+根目录提供 `build.cmd`，自动完成 Go Core、WPF UI 与 PythonKernel 的构建与打包：
 
 ```bat
-build.bat
+build.cmd
 ```
 
 前置依赖：`go`、`dotnet`、`cmake`、`powershell` 以及 MSVC 或 MinGW 工具链。
@@ -286,26 +287,6 @@ Core 中的 `RuntimeManager` 统一聚合每个 Kernel 的运行状态，并通�
 - `get_settings_panel` / `set_setting`：Kernel 自定义设置
 - `get_operations` / `invoke_operation`：Kernel 自定义操作（如 `runtime.probe`）
 
-WPF 的“运行时”页面会展示以上信息，并提供 Python 运行时环境选择。
-
-### Python 运行时
-
-PythonKernel 通过 CPython 稳定 ABI 动态加载 `python3.dll`，因此同一个 `export.dll` 可以运行在任意 CPython 3.x 上，不再与构建机 Python 版本绑定,也不随包分发 Python。
-
-运行时页面由 RuntimeManager 动态生成（与设置页相同的 `SettingPanel` 模型），会从以下位置发现 Python：
-
-1. 用户在运行时页面手动选择的安装（`configs/runtimes.json`）
-2. 系统 PATH
-3. Windows `py` 启动器
-4. 注册表中的 Python 安装
-
-页面会显示每个安装的版本、架构、路径与兼容状态；仅 64 位 CPython 3.8+ 可被选择。选择后重启 Core 生效。Python Kernel 在运行时按“用户选择 → PATH → 注册表”的顺序定位 CPython；若机器上没有可用 Python，Kernel 会返回明确的安装提示。
-
-### Lua 运行时
-
-Lua 5.5.1 VM 直接静态链接进 `export.dll`，目标机器无需安装 Lua 或额外 VC 运行库。
-
----
 
 ## ⚙️ 设置项行为
 

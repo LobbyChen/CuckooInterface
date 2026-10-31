@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PythonBaseDemo 配置</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f5f5;
+      --fg: #1f1f1f;
+      --muted: #616161;
+      --card: #ffffff;
+      --border: #e0e0e0;
+      --accent: #0078d4;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #202020;
+        --fg: #f5f5f5;
+        --muted: #a8a8a8;
+        --card: #2b2b2b;
+        --border: #3a3a3a;
+        --accent: #4cc2ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    h1 { font-size: 16px; margin: 0 0 16px; }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .row:last-of-type { border-bottom: 0; }
+    label { font-size: 13px; }
+    input[type="number"] {
+      width: 120px;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+    }
+    button {
+      margin-top: 14px;
+      padding: 8px 18px;
+      border: 0;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #status { margin-left: 10px; font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PythonBaseDemo 配置</h1>
+    <div class="row">
+      <label for="interval">事件间隔（秒）</label>
+      <input id="interval" type="number" min="1" step="1" value="60">
+    </div>
+    <div class="row">
+      <label for="enabled">启用事件</label>
+      <input id="enabled" type="checkbox" checked>
+    </div>
+    <button id="save">保存</button>
+    <span id="status"></span>
+  </div>
+
+  <script>
+    // ===== 宿主桥接 =====
+    // 1. 读取配置：window.__cuckooConfig 或 cuckoo:init 消息；
+    // 2. 保存配置：postMessage({type:"cuckoo:saveConfig", config:"<字符串>"})；
+    // 3. 保存结果：cuckoo:saved 消息。
+    function applyConfig(raw) {
+      let cfg = {};
+      try { cfg = raw ? JSON.parse(raw) : {}; } catch { cfg = {}; }
+      document.getElementById("interval").value = Number(cfg.interval) > 0 ? Number(cfg.interval) : 60;
+      document.getElementById("enabled").checked = cfg.enabled !== false;
+    }
+
+    function save() {
+      const config = JSON.stringify({
+        interval: Number(document.getElementById("interval").value) || 60,
+        enabled: document.getElementById("enabled").checked
+      });
+      window.chrome.webview.postMessage({ type: "cuckoo:saveConfig", config });
+    }
+
+    window.addEventListener("cuckoo-config-ready", () => applyConfig(window.__cuckooConfig));
+    if (window.__cuckooConfig !== undefined) applyConfig(window.__cuckooConfig);
+
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.addEventListener("message", (event) => {
+        const msg = event.data || {};
+        if (msg.type === "cuckoo:init") {
+          applyConfig(msg.config);
+        } else if (msg.type === "cuckoo:saved") {
+          const status = document.getElementById("status");
+          status.textContent = msg.ok ? "已保存" : ("保存失败：" + (msg.error || ""));
+          if (msg.ok) setTimeout(() => status.textContent = "", 2000);
+        }
+      });
+    }
+
+    document.getElementById("save").addEventListener("click", save);
+  </script>
+</body>
+</html>

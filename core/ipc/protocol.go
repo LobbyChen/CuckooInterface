@@ -38,6 +38,10 @@ const (
 	MethodUnloadPlugin  = "unloadPlugin"
 	MethodInstallPlugin = "installPlugin"
 
+	// 插件配置
+	MethodGetPluginConfig  = "getPluginConfig"
+	MethodSavePluginConfig = "savePluginConfig"
+
 	// 事件
 	MethodGetRecentEvents     = "getRecentEvents"
 	MethodGetRegisteredEvents = "getRegisteredEvents"
@@ -99,6 +103,15 @@ type PublishEventParams struct {
 	Payload string `json:"payload"`
 }
 
+type PluginConfigParams struct {
+	ID string `json:"id"`
+}
+
+type SavePluginConfigParams struct {
+	ID     string `json:"id"`
+	Config string `json:"config"`
+}
+
 // 运行时请求参数
 
 type RuntimeKernelParams struct {
@@ -142,6 +155,13 @@ type PluginDto struct {
 	RuntimeType    string   `json:"runtimeType"`
 	ProvidedEvents []string `json:"providedEvents"`
 	Listeners      []string `json:"listeners"`
+}
+
+// PluginConfigDto 插件配置模型
+type PluginConfigDto struct {
+	PluginID   string `json:"pluginId"`
+	Config     string `json:"config"`
+	ConfigPage string `json:"configPage,omitempty"` // 配置页 HTML 绝对路径；为空表示插件未提供配置页
 }
 
 // EventRecordDto 前端事件记录模型

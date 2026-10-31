@@ -31,9 +31,6 @@ func (spc *SinglePluginConfig) SaveConfig(fp string) error {
 	// 写入文件
 	return os.WriteFile(fp, data, 0666)
 }
-func (spc *SinglePluginConfig) GetConfigString() string {
-	return spc.configString
-}
 
 type CfgManager struct {
 	pluginsCfg map[string]*SinglePluginConfig // PluginName:Cfg ptr
@@ -91,63 +88,59 @@ func (cm *CfgManager) LoadValidConfig(dir string) error {
 	}
 	return nil
 }
-func (cm *CfgManager) RegisterConfig(PluginName string) error {
+
+// EnsureConfig 确保插件配置在内存与磁盘中存在。
+func (cm *CfgManager) EnsureConfig(pluginID, defaultConfig string) error {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return errors.New("plugin id is empty")
+	}
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
-	// 检查是否已经注册
-	if _, exists := cm.pluginsCfg[PluginName]; exists {
-		return fmt.Errorf("plugin config already registered: %s", PluginName)
+	if _, exists := cm.pluginsCfg[pluginID]; exists {
+		return nil
 	}
-	// 创建空配置
-	spc := &SinglePluginConfig{
-		configString: "",
-	}
-	// 创建文件
-	fp := filepath.Join(cm.CfgPath, PluginName+".cfg")
-	// 检测是否已经有该文件
+	fp := filepath.Join(cm.CfgPath, pluginID+".cfg")
 	if utils.IsFileExist(fp) {
-		// 加载已有配置
-		if cfg, err := loadBinaryConfig(fp); err != nil {
-			cm.pluginsCfg[PluginName] = &SinglePluginConfig{configString: ""}
-			return nil
-		} else {
-			cm.pluginsCfg[PluginName] = cfg[PluginName]
-			return nil
+		if cfg, err := loadBinaryConfig(fp); err == nil {
+			if loaded, ok := cfg[pluginID]; ok {
+				cm.pluginsCfg[pluginID] = loaded
+				return nil
+			}
 		}
 	}
-	f, err := os.Create(fp)
-	if err != nil {
-		return fmt.Errorf("failed to create plugin config file: %v", err)
+	spc := &SinglePluginConfig{configString: defaultConfig}
+	if err := spc.SaveConfig(fp); err != nil {
+		return fmt.Errorf("failed to create plugin config file: %w", err)
 	}
-	err = f.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close plugin config file: %v", err)
-	}
-	cm.pluginsCfg[PluginName] = spc
+	cm.pluginsCfg[pluginID] = spc
 	return nil
 }
-func (cm *CfgManager) GetPluginConfig(PluginName string, obj *SinglePluginConfig) error {
-	if _, ok := cm.pluginsCfg[PluginName]; !ok {
-		return fmt.Errorf("plugin config doesn't exist: %s", PluginName)
-	}
+
+// GetConfig 返回插件当前配置字符串。
+func (cm *CfgManager) GetConfig(pluginID string) (string, error) {
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
-	obj.configString = cm.pluginsCfg[PluginName].configString
-	return nil
+	cfg, ok := cm.pluginsCfg[pluginID]
+	if !ok {
+		return "", fmt.Errorf("plugin config doesn't exist: %s", pluginID)
+	}
+	return cfg.configString, nil
 }
-func (cm *CfgManager) WriteConfig(pluginName string, config *SinglePluginConfig) error {
-	if _, ok := cm.pluginsCfg[pluginName]; !ok {
-		return fmt.Errorf("plugin config doesn't exist: %s", pluginName)
-	}
+
+// SetConfig 更新插件配置并立即写盘。写盘失败时内存保持旧值。
+func (cm *CfgManager) SetConfig(pluginID, configString string) error {
 	cm.lock.Lock()
-	obj := &SinglePluginConfig{
-		configString: config.configString,
+	defer cm.lock.Unlock()
+	if _, ok := cm.pluginsCfg[pluginID]; !ok {
+		return fmt.Errorf("plugin config doesn't exist: %s", pluginID)
 	}
-	// 修改cfg
-	cm.pluginsCfg[pluginName] = obj
-	cm.lock.Unlock()
-	// 写回磁盘
-	return obj.SaveConfig(filepath.Join(cm.CfgPath, pluginName+".cfg"))
+	obj := &SinglePluginConfig{configString: configString}
+	if err := obj.SaveConfig(filepath.Join(cm.CfgPath, pluginID+".cfg")); err != nil {
+		return err
+	}
+	cm.pluginsCfg[pluginID] = obj
+	return nil
 }
 func loadBinaryConfig(fp string) (map[string]*SinglePluginConfig, error) {
 	if !utils.IsFileExist(fp) {

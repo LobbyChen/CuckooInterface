@@ -7,6 +7,7 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2006"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:pages="clr-namespace:CuckooInterfaceUI.Pages"
+      xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
       mc:Ignorable="d"
       d:DesignHeight="600" d:DesignWidth="900"
       Title="ConfigPage">
@@ -133,37 +134,44 @@
 					</StackPanel>
 
 					<!--
-                        空状态现在是真正的全尺寸内容区，而不是只包住文字的一小块 Border。
-                        Card 的 ContentAlignment 显式设为 Stretch，Grid 的第二行占满剩余空间。
+                        插件配置页：由插件 META-INF.json 的 config_page 指定 HTML，
+                        通过 WebView2 加载；未提供配置页时显示下方空状态。
                     -->
-					<Border Grid.Row="1"
-                            MinHeight="240"
-                            Background="{DynamicResource ControlFillColorDefaultBrush}"
-                            CornerRadius="8"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch">
-						<Grid Margin="24">
-							<StackPanel HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        MaxWidth="460">
-								<TextBlock Text="暂无配置项"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"
-                                           HorizontalAlignment="Center"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-								<TextBlock Text="当前插件没有可编辑的配置项，或插件暂未提供配置页面。"
-                                           Margin="0,8,0,0"
-                                           FontSize="13"
-                                           TextWrapping="Wrap"
-                                           TextAlignment="Center"
-                                           HorizontalAlignment="Center"
-                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-							</StackPanel>
-						</Grid>
-					</Border>
+					<Grid Grid.Row="1">
+						<wv2:WebView2 x:Name="ConfigWebView"
+						              HorizontalAlignment="Stretch"
+						              VerticalAlignment="Stretch" />
+
+						<Border x:Name="ConfigEmptyState"
+						        MinHeight="240"
+						        Background="{DynamicResource ControlFillColorDefaultBrush}"
+						        CornerRadius="8"
+						        HorizontalAlignment="Stretch"
+						        VerticalAlignment="Stretch">
+							<Grid Margin="24">
+								<StackPanel HorizontalAlignment="Center"
+								        VerticalAlignment="Center"
+								        MaxWidth="460">
+									<TextBlock x:Name="ConfigEmptyTitle"
+									           Text="暂无配置项"
+									           FontSize="18"
+									           FontWeight="SemiBold"
+									           HorizontalAlignment="Center"
+									           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+									<TextBlock x:Name="ConfigEmptyDesc"
+									           Text="当前插件没有可编辑的配置项，或插件暂未提供配置页面。"
+									           Margin="0,8,0,0"
+									           FontSize="13"
+									           TextWrapping="Wrap"
+									           TextAlignment="Center"
+									           HorizontalAlignment="Center"
+									           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+								</StackPanel>
+							</Grid>
+						</Border>
+					</Grid>
 				</Grid>
 			</ui:Card>
 		</Grid>
 	</Grid>
 </pages:AutoRefreshPage>
-

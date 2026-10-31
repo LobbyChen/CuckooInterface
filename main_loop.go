@@ -107,11 +107,11 @@ func runMainLoop(ctx context.Context, isService bool) {
 			log.Error(msg)
 		},
 		GetPluginConfig: func(pluginName string) string {
-			var spc config.SinglePluginConfig
-			if err := cfgManager.GetPluginConfig(pluginName, &spc); err != nil {
+			cfg, err := cfgManager.GetConfig(pluginName)
+			if err != nil {
 				return ""
 			}
-			return spc.GetConfigString()
+			return cfg
 		},
 		IntoLoopReport: nil, // 由 KernelManager 动态覆盖拦截
 		Panic: func(reason string) {
@@ -141,7 +141,7 @@ func runMainLoop(ctx context.Context, isService bool) {
 
 	// 创建并启动 IPC 命名管道服务
 	ipcBridge := &IPC.CoreIpcInterface{}
-	ipcBridge.Init(&km, pfm, pm, rm, eventBus, log)
+	ipcBridge.Init(&km, pfm, pm, rm, eventBus, cfgManager, log)
 
 	if err := ipcBridge.CreatePipe(); err != nil {
 		log.Fatalf("Failed to create Core IPC pipe: %v", err)
@@ -231,6 +231,10 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 	allPlugins := append([]*plugin_manager.SinglePluginFile{}, pfm.GetBasePlugins()...)
 	allPlugins = append(allPlugins, pfm.GetActivePlugins()...)
 	for _, pf := range allPlugins {
+		// 先确保配置文件存在，插件加载时即可通过 get_plugin_config 读取到默认配置。
+		if err := cfgManager.EnsureConfig(pf.Meta.ID, pf.Meta.DefaultConfig); err != nil {
+			log.Warnf("Failed to register config for plugin [%s]: %v", pf.Name(), err)
+		}
 		if err := pm.LoadPlugin(pf); err != nil {
 			log.Errorf("Failed to auto-load plugin [%s]: %v", pf.Name(), err)
 			if !coreCfg.ContinueOnError {
@@ -238,10 +242,6 @@ func loadPlugins(pfm *plugin_manager.PluginFileManager, km *plugin_manager.Kerne
 				break
 			}
 			continue
-		}
-		// 为成功加载的插件注册配置文件占位。
-		if err := cfgManager.RegisterConfig(pf.Meta.ID); err != nil {
-			log.Warnf("Failed to register config for plugin [%s]: %v", pf.Name(), err)
 		}
 		log.Infof("Auto-loaded plugin [%s]", pf.Name())
 	}

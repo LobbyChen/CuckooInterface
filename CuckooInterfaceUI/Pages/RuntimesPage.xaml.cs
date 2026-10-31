@@ -19,7 +19,7 @@ namespace CuckooInterfaceUI.Pages
 {
     /// <summary>
     /// 运行时页面：展示 RuntimeManager 聚合的 Kernel 状态，并渲染 Kernel
-    /// 通过 Runtime Control Plane 下发的设置面板与操作。
+    /// 通过 Runtime Control Plane 下发的设置面板与操作
     /// </summary>
     public partial class RuntimesPage : AutoRefreshPage
     {
@@ -32,7 +32,7 @@ namespace CuckooInterfaceUI.Pages
         private int _detailRequestId;
         private MainWindow? _hostWindow;
 
-        /// <summary>从插件页跳转时指定需要选中的 Kernel ID。</summary>
+        /// <summary>从插件页跳转时指定需要选中的 Kernel ID</summary>
         public static string? PendingKernelId { get; set; }
 
         public RuntimesPage()
@@ -125,8 +125,8 @@ namespace CuckooInterfaceUI.Pages
                 var nextSignature = string.Join("|", runtimes.Select(r => r.Signature));
 
                 RuntimeListStatusText.Text = runtimes.Count == 0
-                    ? "未发现 Kernel 运行时。"
-                    : $"{runtimes.Count} 个 Kernel · 由 RuntimeManager 统一管理";
+                    ? "未发现 Kernel 运行时"
+                    : $"{runtimes.Count} 个 Kernel";
                 RuntimeListEmptyState.Visibility = runtimes.Count == 0
                     ? Visibility.Visible
                     : Visibility.Collapsed;
@@ -147,12 +147,12 @@ namespace CuckooInterfaceUI.Pages
                     }
                     else
                     {
-                        ClearDetail("没有可用的运行时", "请安装或启用 Kernel 后重启 Core。");
+                        ClearDetail("没有可用的运行时", "请安装或启用 Kernel 后重启 Core");
                     }
                 }
                 else if (_selected != null)
                 {
-                    // 状态未变化时仅同步详情绑定对象，列表保持稳定。
+                    // 状态未变化时仅同步详情绑定对象，列表保持稳定
                     var latest = runtimes.FirstOrDefault(r => r.KernelId == _selected.KernelId);
                     if (latest != null && !ReferenceEquals(latest, _selected))
                     {
@@ -236,7 +236,7 @@ namespace CuckooInterfaceUI.Pages
                 {
                     RuntimeSelectionHost.Children.Add(new TextBlock
                     {
-                        Text = "未提供运行时选择信息。",
+                        Text = "未提供运行时选择信息",
                         FontSize = 11,
                         Foreground = SecondaryBrush,
                         TextWrapping = TextWrapping.Wrap
@@ -456,7 +456,7 @@ namespace CuckooInterfaceUI.Pages
             {
                 var result = await _backend.SelectRuntimeAsync(info.KernelId, home);
                 if (!result.Ok)
-                    throw new InvalidOperationException("Core 未确认运行时选择。");
+                    throw new InvalidOperationException("Core 未确认运行时选择");
 
                 await LoadRuntimeSelectionPanelAsync(info, requestId, refresh: true);
                 await LoadRuntimesAsync(silent: true);
@@ -469,7 +469,7 @@ namespace CuckooInterfaceUI.Pages
                     return;
                 }
 
-                RuntimeSelectionInfoBar.Message = "运行时选择已保存，重启 Core 后生效。";
+                RuntimeSelectionInfoBar.Message = "运行时选择已保存，重启 Core 后生效";
                 RuntimeSelectionInfoBar.IsOpen = true;
 
                 if (Window.GetWindow(this) is not MainWindow window)
@@ -496,7 +496,7 @@ namespace CuckooInterfaceUI.Pages
 
             if (!info.SupportsControlPlane)
             {
-                RuntimeSettingsEmptyText.Text = "该 Kernel 未实现 Runtime Control Plane。";
+                RuntimeSettingsEmptyText.Text = "该 Kernel 未实现 Runtime Control Plane";
                 RuntimeSettingsEmptyText.Visibility = Visibility.Visible;
                 return;
             }
@@ -531,7 +531,7 @@ namespace CuckooInterfaceUI.Pages
 
                 if (!hasSettings)
                 {
-                    RuntimeSettingsEmptyText.Text = "该 Kernel 未提供运行时设置。";
+                    RuntimeSettingsEmptyText.Text = "该 Kernel 未提供运行时设置";
                     RuntimeSettingsEmptyText.Visibility = Visibility.Visible;
                 }
             }
@@ -721,7 +721,7 @@ namespace CuckooInterfaceUI.Pages
                 if (!result.Ok)
                 {
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.Error)
-                        ? "Kernel 拒绝了该设置。"
+                        ? "Kernel 拒绝了该设置"
                         : result.Error);
                 }
 
@@ -742,7 +742,7 @@ namespace CuckooInterfaceUI.Pages
 
             if (!info.SupportsControlPlane)
             {
-                RuntimeOperationsEmptyText.Text = "该 Kernel 未声明运行时操作。";
+                RuntimeOperationsEmptyText.Text = "该 Kernel 未声明运行时操作";
                 RuntimeOperationsEmptyText.Visibility = Visibility.Visible;
                 return;
             }
@@ -755,7 +755,7 @@ namespace CuckooInterfaceUI.Pages
 
                 if (operations.Count == 0)
                 {
-                    RuntimeOperationsEmptyText.Text = "该 Kernel 未声明运行时操作。";
+                    RuntimeOperationsEmptyText.Text = "该 Kernel 未声明运行时操作";
                     RuntimeOperationsEmptyText.Visibility = Visibility.Visible;
                     return;
                 }
@@ -802,7 +802,7 @@ namespace CuckooInterfaceUI.Pages
                         ? errorProp.GetString()
                         : null;
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
-                        ? "Kernel 返回失败结果。"
+                        ? "Kernel 返回失败结果"
                         : error);
                 }
 
@@ -824,7 +824,7 @@ namespace CuckooInterfaceUI.Pages
         {
             if (!info.SupportsControlPlane)
             {
-                RuntimeStateTextBox.Text = "该 Kernel 未实现 Runtime Control Plane。";
+                RuntimeStateTextBox.Text = "该 Kernel 未实现 Runtime Control Plane";
                 return;
             }
 
@@ -882,7 +882,7 @@ namespace CuckooInterfaceUI.Pages
                 RestartCoreButton.IsEnabled = false;
                 var ok = await _backend.RestartCoreAsync();
                 if (!ok)
-                    throw new InvalidOperationException("Daemon 未确认 Core 重启。");
+                    throw new InvalidOperationException("Daemon 未确认 Core 重启");
 
                 window.ShowToast("正在重启 Core", "运行时会重新加载，请稍候…");
                 await Task.Delay(1800);
@@ -906,10 +906,10 @@ namespace CuckooInterfaceUI.Pages
             _selected = null;
             RuntimeList.ItemsSource = null;
             RuntimeListEmptyState.Visibility = Visibility.Visible;
-            RuntimeListStatusText.Text = "Core 未连接，恢复连接后会自动刷新。";
+            RuntimeListStatusText.Text = "Core 未连接，恢复连接后会自动刷新";
             RefreshRuntimesButton.IsEnabled = false;
             RestartCoreButton.IsEnabled = false;
-            ClearDetail("Core 未连接", "恢复连接后会自动加载运行时信息。");
+            ClearDetail("Core 未连接", "恢复连接后会自动加载运行时信息");
         }
 
         private void ClearDetail(string title, string detail)

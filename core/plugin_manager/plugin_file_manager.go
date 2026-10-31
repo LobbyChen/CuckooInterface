@@ -25,6 +25,29 @@ func (spf *SinglePluginFile) Name() string {
 	return spf.Meta.Name
 }
 
+// Dir 返回插件解压后的目录。
+func (spf *SinglePluginFile) Dir() string {
+	return spf.dir
+}
+
+// ConfigPagePath 返回 META-INF.json 中 config_page 声明的配置页绝对路径。
+// config_page 必须是插件目录内的相对路径，且目标文件必须存在。
+func (spf *SinglePluginFile) ConfigPagePath() (string, bool) {
+	rel := strings.TrimSpace(spf.Meta.ConfigPage)
+	if rel == "" || filepath.IsAbs(rel) {
+		return "", false
+	}
+	clean := filepath.Clean(rel)
+	if clean == "." || strings.HasPrefix(clean, "..") {
+		return "", false
+	}
+	full := filepath.Join(spf.dir, clean)
+	if !utils.IsFileExist(full) {
+		return "", false
+	}
+	return full, true
+}
+
 // 插件文件管理
 type PluginFileManager struct {
 	// 维护的plugins

@@ -6,5 +6,7 @@
   "description": "Python 运行时的 Base 插件示例，提供 python.timer.tick 事件",
   "runtime_type": "python",
   "tag": ["demo", "python"],
-  "events": ["python.timer.tick"]
+  "events": ["python.timer.tick"],
+  "config_page": "config.html",
+  "default_config": "{\"interval\": 60, \"enabled\": true}"
 }
