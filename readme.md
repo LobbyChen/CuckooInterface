@@ -47,6 +47,12 @@ CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插�
 - **运行时隔离准备**：Kernel 通过 sandbox host 管理 DLL、线程、任务以及崩溃状态
 
 ---
+## AI含量声明
+
+- 后端，包含GO Core ~10%
+- 前端，主要为WPF-UI 100%
+
+---
 ## 🧩 插件分层
 
 CuckooInterface 当前定义了三种插件类型：
