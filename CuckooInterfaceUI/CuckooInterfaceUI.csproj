@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="icon.ico" />
+    <Resource Include="..\icon.png" Link="Assets\icon.png" />
   </ItemGroup>
 
   <ItemGroup>

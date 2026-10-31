@@ -5,6 +5,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              xmlns:local="clr-namespace:CuckooInterfaceUI"
+             xmlns:behaviors="clr-namespace:CuckooInterfaceUI.Behaviors"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>
@@ -12,6 +13,18 @@
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
+
+            <!--
+                全局滚动行为：
+                - PanningMode 让触摸屏可以直接拖动内容滚动（包括 ListView / ListBox 内部滚动区）；
+                - SmoothScrollBehavior 为鼠标滚轮提供平滑插值滚动。
+            -->
+            <Style TargetType="{x:Type ScrollViewer}" BasedOn="{StaticResource {x:Type ScrollViewer}}">
+                <Setter Property="PanningMode" Value="VerticalOnly" />
+                <Setter Property="PanningDeceleration" Value="0.001" />
+                <Setter Property="PanningRatio" Value="1" />
+                <Setter Property="behaviors:SmoothScrollBehavior.IsEnabled" Value="True" />
+            </Style>
 
             <!-- 统一应用状态与交互颜色。 -->
             <SolidColorBrush x:Key="CuckooStatusSuccessBrush" Color="#63D38B" />

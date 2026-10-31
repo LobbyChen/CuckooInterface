@@ -154,7 +154,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "singleInstance",
 									Name:               "仅允许运行一个实例",
-									Description:        "新启动的实例将通知旧实例退出（重启 Core 后生效）",
+									Description:        "新启动的实例将通知旧实例退出，需要重启核心",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -172,7 +172,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "serviceMode",
 									Name:               "将 Core 注册为系统服务并开机自启",
-									Description:        "需要管理员权限；注册后将在下次开机自动启动 Core（系统账户后台运行，不显示界面），当前 Core 不受影响",
+									Description:        "需要管理员权限；注册后将在下次开机自动启动 Core",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -198,7 +198,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "logLevel",
 									Name:               "日志级别",
-									Description:        "控制日志输出的详细程度（立即生效）",
+									Description:        "控制日志输出的详细程度",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor: SelectEditor{
@@ -223,7 +223,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "logMaxSize",
 									Name:               "单文件最大大小",
-									Description:        "当日志文件超过此大小时进行轮转（立即生效）",
+									Description:        "当日志文件超过此大小时进行轮转",
 									DisplayName:        true,
 									DisplayDescription: false,
 									Editor: SliderEditor{
@@ -246,7 +246,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "logCompress",
 									Name:               "压缩旧日志",
-									Description:        "对超过保留天数的日志文件进行压缩以节省空间（立即生效）",
+									Description:        "对超过保留天数的日志文件进行压缩以节省空间",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -272,7 +272,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "autoLoadPlugins",
 									Name:               "启动时自动加载插件",
-									Description:        "启动时自动加载 Base/Active 插件（重启 Core 后生效）",
+									Description:        "启动时自动加载 Base/Active 插件，需要重启核心",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},
@@ -284,7 +284,7 @@ func BuildSettingsPanel() SettingPanel {
 								SettingDefinition{
 									Key:                "continueOnError",
 									Name:               "加载失败时继续",
-									Description:        "某个插件加载失败时不中断整体启动流程（重启 Core 后生效）",
+									Description:        "某个插件加载失败时不中断整体启动流程，需要重启核心",
 									DisplayName:        true,
 									DisplayDescription: true,
 									Editor:             SwitchEditor{},

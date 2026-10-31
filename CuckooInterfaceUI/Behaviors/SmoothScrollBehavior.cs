@@ -36,6 +36,9 @@ namespace CuckooInterfaceUI.Behaviors
         /// <summary>记录每个 ScrollViewer 的平滑滚动状态。</summary>
         private static readonly Dictionary<ScrollViewer, ScrollState> _states = new();
 
+        /// <summary>CompositionTarget.Rendering 是否已经订阅，避免多列表同时滚动时重复订阅。</summary>
+        private static bool _isRenderingHooked;
+
         private sealed class ScrollState
         {
             public double TargetOffset;   // 目标垂直偏移
@@ -56,6 +59,8 @@ namespace CuckooInterfaceUI.Behaviors
                 sv.PreviewMouseWheel -= OnPreviewMouseWheel;
                 sv.Unloaded -= OnScrollViewerUnloaded;
                 _states.Remove(sv);
+                if (_states.Count == 0)
+                    StopRendering();
             }
         }
 
@@ -66,6 +71,8 @@ namespace CuckooInterfaceUI.Behaviors
                 sv.PreviewMouseWheel -= OnPreviewMouseWheel;
                 sv.Unloaded -= OnScrollViewerUnloaded;
                 _states.Remove(sv);
+                if (_states.Count == 0)
+                    StopRendering();
             }
         }
 
@@ -82,6 +89,10 @@ namespace CuckooInterfaceUI.Behaviors
                     return;
                 }
             }
+
+            // 没有可滚动内容时不要拦截滚轮，让父级滚动区继续处理
+            if (sv.ScrollableHeight <= 0)
+                return;
 
             if (!_states.TryGetValue(sv, out var state))
             {
@@ -100,7 +111,11 @@ namespace CuckooInterfaceUI.Behaviors
             if (!state.IsAnimating)
             {
                 state.IsAnimating = true;
-                CompositionTarget.Rendering += OnRendering;
+                if (!_isRenderingHooked)
+                {
+                    CompositionTarget.Rendering += OnRendering;
+                    _isRenderingHooked = true;
+                }
             }
 
             e.Handled = true;
@@ -110,7 +125,7 @@ namespace CuckooInterfaceUI.Behaviors
         {
             if (_states.Count == 0)
             {
-                CompositionTarget.Rendering -= OnRendering;
+                StopRendering();
                 return;
             }
 
@@ -148,8 +163,16 @@ namespace CuckooInterfaceUI.Behaviors
 
             if (_states.Count == 0)
             {
-                CompositionTarget.Rendering -= OnRendering;
+                StopRendering();
             }
+        }
+
+        private static void StopRendering()
+        {
+            if (!_isRenderingHooked)
+                return;
+            CompositionTarget.Rendering -= OnRendering;
+            _isRenderingHooked = false;
         }
 
         private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
