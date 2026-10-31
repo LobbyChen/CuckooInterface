@@ -237,22 +237,26 @@ func (pm *PluginFileManager) RemovePlugin(id string) error {
 }
 
 // AddExternalPlugin 添加外部未解压的插件文件
-func (pm *PluginFileManager) AddExternalPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
+func (pm *PluginFileManager) AddExternalPlugin(pluginPath string) (constantPkg.PlugType, error) {
 	// 验证文件是否存在
 	if !utils.IsFileExist(pluginPath) {
-		return fmt.Errorf("plugin file not found: %s", pluginPath)
+		return 0x00, fmt.Errorf("plugin file not found: %s", pluginPath)
 	}
-
+	// 提取插件类型
+	pluginType, err := CheckPluginType(pluginPath)
+	if err != nil {
+		return 0x00, err
+	}
 	// 获取绝对路径
 	absPath, err := filepath.Abs(pluginPath)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %w", err)
+		return 0x00, fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
 	// 获取可执行目录作为运行时目录
 	baseDirForExtract, err := utils.GetExecutableDir()
 	if err != nil {
-		return fmt.Errorf("failed to get executable dir: %w", err)
+		return 0x00, fmt.Errorf("failed to get executable dir: %w", err)
 	}
 	runtimeDir := filepath.Join(baseDirForExtract, constantPkg.RuntimePluginFolder)
 
@@ -278,16 +282,16 @@ func (pm *PluginFileManager) AddExternalPlugin(pluginPath string, pluginType con
 	case constantPkg.BASE:
 		pm.Base = append(pm.Base, spf)
 	default:
-		return fmt.Errorf("unsupported plugin type: %v", pluginType)
+		return 0x00, fmt.Errorf("unsupported plugin type: %v", pluginType)
 	}
 
-	return nil
+	return pluginType, nil
 }
 
 // ExtractAndLoadExternalPlugin 解压并加载单个外部插件
-func (pm *PluginFileManager) ExtractAndLoadExternalPlugin(pluginPath string, pluginType constantPkg.PlugType) error {
-	// 先添加插件
-	err := pm.AddExternalPlugin(pluginPath, pluginType)
+func (pm *PluginFileManager) ExtractAndLoadExternalPlugin(pluginPath string) error {
+	// 添加插件
+	pluginType, err := pm.AddExternalPlugin(pluginPath)
 	if err != nil {
 		return err
 	}

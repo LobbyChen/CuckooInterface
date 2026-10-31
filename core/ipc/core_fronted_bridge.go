@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	winio "github.com/Microsoft/go-winio"
+	"github.com/Microsoft/go-winio"
 )
 
 // 与IPC的UI层接口定义
@@ -487,22 +487,24 @@ func (ipc *CoreIpcInterface) handleInstallPlugin(params json.RawMessage) (json.R
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	plugType, err := stringToPlugType(p.Type)
-	if err != nil {
-		return nil, err
-	}
 	if !utils.IsFileExist(p.Path) {
 		return nil, fmt.Errorf("file %s not exist", p.Path)
+	}
+	// 插件类型由插件包内的 META-INF.json 自动识别，前端无需再传 type。
+	pluginType, err := plugin_manager.CheckPluginType(p.Path)
+	if err != nil {
+		return nil, fmt.Errorf("detect plugin type failed: %w", err)
 	}
 	// 拷贝到插件根目录下的类型文件夹，防止插件加载失败
 	pluginRoot := config.GetPluginRoot()
 	if err := config.EnsurePluginRoot(pluginRoot); err != nil {
 		return nil, fmt.Errorf("prepare plugin root failed: %w", err)
 	}
-	if err := utils.CopyFile(p.Path, filepath.Join(pluginRoot, plugTypeFolder(plugType), filepath.Base(p.Path))); err != nil {
+	if err := utils.CopyFile(p.Path, filepath.Join(pluginRoot, plugTypeFolder(pluginType), filepath.Base(p.Path))); err != nil {
 		return nil, err
 	}
-	if err := ipc.pfm.ExtractAndLoadExternalPlugin(p.Path, plugType); err != nil {
+
+	if err := ipc.pfm.ExtractAndLoadExternalPlugin(p.Path); err != nil {
 		return nil, fmt.Errorf("install plugin failed: %w", err)
 	}
 	return json.Marshal(true)

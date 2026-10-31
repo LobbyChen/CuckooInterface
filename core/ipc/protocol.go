@@ -94,7 +94,6 @@ type LoadPluginParams struct {
 }
 
 type InstallPluginParams struct {
-	Type string `json:"type"`
 	Path string `json:"path"`
 }
 

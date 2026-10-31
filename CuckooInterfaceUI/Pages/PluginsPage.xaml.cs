@@ -269,37 +269,6 @@ namespace CuckooInterfaceUI.Pages
             var primaryBrush = FindResource("TextFillColorPrimaryBrush") as System.Windows.Media.Brush;
             var controlBrush = FindResource("ControlFillColorDefaultBrush") as System.Windows.Media.Brush;
 
-            var typeComboBox = new ComboBox
-            {
-                SelectedIndex = 0,
-                MinWidth = 340,
-                Margin = new Thickness(0, 0, 0, 18),
-                Foreground = primaryBrush,
-                Background = controlBrush
-            };
-
-            typeComboBox.Items.Add(new ComboBoxItem
-            {
-                Content = "内核",
-                Tag = "kernel",
-                Foreground = primaryBrush,
-                Background = controlBrush
-            });
-            typeComboBox.Items.Add(new ComboBoxItem
-            {
-                Content = "基础",
-                Tag = "base",
-                Foreground = primaryBrush,
-                Background = controlBrush
-            });
-            typeComboBox.Items.Add(new ComboBoxItem
-            {
-                Content = "应用",
-                Tag = "active",
-                Foreground = primaryBrush,
-                Background = controlBrush
-            });
-
             var pathBox = new Wpf.Ui.Controls.TextBox
             {
                 PlaceholderText = "选择 .zip 插件包…",
@@ -356,14 +325,6 @@ namespace CuckooInterfaceUI.Pages
 
             content.Children.Add(new Wpf.Ui.Controls.TextBlock
             {
-                Text = "插件类型",
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 6)
-            });
-            content.Children.Add(typeComboBox);
-
-            content.Children.Add(new Wpf.Ui.Controls.TextBlock
-            {
                 Text = "安装包",
                 FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 6)
@@ -387,16 +348,6 @@ namespace CuckooInterfaceUI.Pages
             if (result != ContentDialogResult.Primary)
                 return;
 
-            if (typeComboBox.SelectedItem is not ComboBoxItem typeItem ||
-                typeItem.Tag is not string type)
-            {
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
-                    "无法安装",
-                    "请先选择插件类型。",
-                    true);
-                return;
-            }
-
             var path = (pathBox.Text ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             {
@@ -411,7 +362,7 @@ namespace CuckooInterfaceUI.Pages
             {
                 InstallPluginButton.IsEnabled = false;
 
-                var ok = await _backend.InstallPluginAsync(type, path);
+                var ok = await _backend.InstallPluginAsync(path);
                 if (!ok)
                     throw new InvalidOperationException("Core 未确认插件安装成功。");
 

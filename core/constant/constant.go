@@ -54,6 +54,7 @@ var Folders = []string{
 	"user/Kernel",
 	"plugins",
 	"configs",
+	"temp",
 }
 var LogFolder = Folders[0]
 var UserFolder = Folders[1]
@@ -62,6 +63,7 @@ var BasePluginFolder = Folders[3]
 var KernelPluginFolder = Folders[4]
 var RuntimePluginFolder = Folders[5]
 var ConfigFolder = Folders[6]
+var TempFolder = Folders[7]
 
 // 插件内文件定义
 const (
