@@ -24,7 +24,6 @@ CuckooInterface 是一个主要为电教场景打造的，面向 Windows 的插�
 - [Lua SDK](./implement/Kernel/LuaKernel/README.md)
 
 我们也鼓励编写第三方的其他编程语言SDK。
-我们预计会在下一个版本支持JVM语言。
 
 ---
 ## 在插件以外
