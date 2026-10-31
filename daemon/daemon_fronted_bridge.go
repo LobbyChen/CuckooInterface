@@ -25,6 +25,7 @@ type DaemonIpcInterface struct {
 	startCore CoreControlFunc // 注入的启动函数
 	stopCore  CoreControlFunc // 注入的停止函数
 	once      sync.Once
+	ui_PID    int
 }
 
 // Init 初始化 Daemon IPC 接口
@@ -130,6 +131,10 @@ func (ipc *DaemonIpcInterface) processCommand(data []byte) []byte {
 }
 
 func (ipc *DaemonIpcInterface) handleStartCore() (json.RawMessage, error) {
+	// 检测UI是否已经启动
+	if !GetStatusManager().IsUIRunning() {
+		return nil, fmt.Errorf("daemon UI process not running,no permission")
+	}
 	if ipc.startCore == nil {
 		return nil, fmt.Errorf("start_core_func_not_injected")
 	}
@@ -141,6 +146,9 @@ func (ipc *DaemonIpcInterface) handleStartCore() (json.RawMessage, error) {
 }
 
 func (ipc *DaemonIpcInterface) handleStopCore() (json.RawMessage, error) {
+	if !GetStatusManager().IsUIRunning() {
+		return nil, fmt.Errorf("daemon UI process not running,no permission")
+	}
 	if ipc.stopCore == nil {
 		return nil, fmt.Errorf("stop_core_func_not_injected")
 	}
@@ -152,6 +160,9 @@ func (ipc *DaemonIpcInterface) handleStopCore() (json.RawMessage, error) {
 }
 
 func (ipc *DaemonIpcInterface) handleRestartCore() (json.RawMessage, error) {
+	if !GetStatusManager().IsUIRunning() {
+		return nil, fmt.Errorf("daemon UI process not running,no permission")
+	}
 	// 先停止，再启动
 	if ipc.stopCore != nil {
 		if err := ipc.stopCore(); err != nil {

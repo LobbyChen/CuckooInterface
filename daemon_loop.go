@@ -93,7 +93,7 @@ func RunDaemonLoop() {
 		}
 	}
 
-	// 初始拉起 UI 子进程（-no_ui 用于静默开机自启）
+	// 初始拉起 UI 子进程
 	if daemon.ShouldOpenUI() {
 		if err := daemon.StartUI(); err != nil {
 			log.Errorf("Failed to start UI initially: %v", err)
@@ -164,9 +164,6 @@ func startCoreProcess(log *logger.Logger) error {
 	// 拉起自身，并传入 normal 模式参数
 	cmd := exec.Command(selfPath, "-"+constant.ArgTag, constant.NormalModeArgData)
 	cmd.Dir = exeDir
-	// 可选：将 Core 的输出重定向到 Daemon 的控制台或日志文件
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start Core process: %w", err)
@@ -180,10 +177,6 @@ func startCoreProcess(log *logger.Logger) error {
 	go func() {
 		waitErr := cmd.Wait()
 		coreMu.Lock()
-		// 仅当 coreCmd 仍指向本 cmd 时才更新状态。
-		// 避免 restart 场景下：旧进程被 kill 后，其 Wait 回调
-		// 覆盖新进程已设置的 coreRunning=true / coreCmd=newCmd，
-		// 进而导致保活协程误判 Core 未运行而无限重启。
 		if coreCmd == cmd {
 			coreRunning = false
 			coreCmd = nil
@@ -243,7 +236,7 @@ func coreKeepAliveLoop(log *logger.Logger, managedByService bool) {
 			return
 		case <-ticker.C:
 			if service.IsRunning() {
-				// 服务可能在 Daemon 运行期间被启用，交给 SCM 管理。
+				// 服务可能在 Daemon 运行期间被启用
 				continue
 			}
 			if shouldRestartCore() {

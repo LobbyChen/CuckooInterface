@@ -71,3 +71,29 @@ func GetExecutableName() (string, error) {
 	}
 	return filepath.Base(exePath), nil
 }
+
+// IsProcessRunning 检查 Windows 进程是否运行
+func IsProcessRunning(pid uint32) bool {
+	if pid == 0 {
+		return false
+	}
+
+	handle, err := windows.OpenProcess(
+		windows.PROCESS_QUERY_LIMITED_INFORMATION,
+		false,
+		pid,
+	)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(handle)
+
+	var exitCode uint32
+	err = windows.GetExitCodeProcess(handle, &exitCode)
+	if err != nil {
+		return false
+	}
+
+	// STILL_ACTIVE = 259
+	return exitCode == 259
+}

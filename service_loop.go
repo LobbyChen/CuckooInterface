@@ -12,8 +12,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-// RunServiceLoop 以 Windows 服务方式运行 Core。
-// 服务由 SCM 启动，不创建托盘，也不显示 UI。
+// RunServiceLoop 以 Windows 服务方式运行 Core
 func RunServiceLoop() {
 	if err := svc.Run(service.Name, &coreService{}); err != nil {
 		fmt.Fprintf(os.Stderr, "run service failed: %v\n", err)
