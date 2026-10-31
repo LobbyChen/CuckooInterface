@@ -22,7 +22,7 @@ const (
 	Description = "CuckooInterface 插件平台后台服务"
 )
 
-// Install 注册（或更新）Core 服务并设为自动启动，要求当前进程有管理员权限。
+// Install 注册Core 服务并设为自动启动，要求当前进程有管理员权限。
 func Install(exePath string) error {
 	return installDirect(exePath)
 }
@@ -172,9 +172,6 @@ func uninstallDirect() error {
 			}
 		}
 	}
-	// 服务进程自行卸载时不能等待自身停止；Delete 会将其标记为删除，
-	// 当前进程退出后服务即被移除。
-
 	if err := s.Delete(); err != nil {
 		return fmt.Errorf("delete service: %w", err)
 	}

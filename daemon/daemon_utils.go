@@ -47,7 +47,7 @@ func StartUI() error {
 	logger.GetLogger().Infof("UI process started, PID: %d, path: %s", cmd.Process.Pid, uiPath)
 	sm.SetUIProcess(cmd.Process)
 
-	// 后台协程监控 UI 进程生命周期，退出后自动清除状态
+	// 后台协程监控 UI 进程生命周期
 	go func() {
 		waitErr := cmd.Wait()
 		if waitErr != nil {
@@ -55,6 +55,7 @@ func StartUI() error {
 		} else {
 			logger.GetLogger().Info("UI process exited normally")
 		}
+		isUIProcessRunning = false
 		sm.ClearUIProcess()
 	}()
 

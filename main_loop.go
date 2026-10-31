@@ -28,7 +28,7 @@ func RunMainLoop() {
 	runMainLoop(context.Background(), false)
 }
 
-// runMainLoop 是 Core 的实际主循环；ctx 用于 Windows 服务停止时触发优雅退出。
+// runMainLoop 是 Core 的实际主循环
 func runMainLoop(ctx context.Context, isService bool) {
 	// 初始化配置管理器
 	// 加载配置

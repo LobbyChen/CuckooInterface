@@ -15,9 +15,13 @@ import (
 
 //go:embed icon.ico
 var trayIcon []byte
+var isUIProcessRunning bool = false
 
 // SetupTray 初始化系统托盘菜单
 func SetupTray(ctx context.Context) {
+	// 检测UI进程是否已经启动以刷新标志位
+	sm := GetStatusManager()
+	isUIProcessRunning = sm.IsUIRunning()
 	// 设置图标
 	systray.SetIcon(trayIcon)
 	systray.SetTooltip("CuckooInterface 守护进程")
