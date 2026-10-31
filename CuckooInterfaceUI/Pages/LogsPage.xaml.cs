@@ -86,7 +86,7 @@ namespace CuckooInterfaceUI.Pages
             {
                 var connected = _backend.IsCoreConnected;
                 RefreshLogsButton.IsEnabled = connected;
-                ExportLogsButton.IsEnabled = connected && LogsList.Items.Count > 0;
+                ExportLogsButton.IsEnabled = connected && _filteredLogs.Count > 0;
                 ClearLogsButton.IsEnabled = connected && _allLogs.Count > 0;
             }
         }
@@ -116,8 +116,7 @@ namespace CuckooInterfaceUI.Pages
                 if (levelFilter != null && log.LevelText != levelFilter) return false;
                 if (!string.IsNullOrWhiteSpace(search))
                 {
-                    return log.Message.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                           log.Logger.Contains(search, StringComparison.OrdinalIgnoreCase);
+                    return log.Message.Contains(search, StringComparison.OrdinalIgnoreCase);
                 }
                 return true;
             }).ToList();
@@ -143,7 +142,7 @@ namespace CuckooInterfaceUI.Pages
             LogCountText.Text = $"{_filteredLogs.Count} 条";
             UpdateEmptyState();
             UpdateLogsPagination(totalPages);
-            ExportLogsButton.IsEnabled = _backend.IsCoreConnected && display.Count > 0;
+            ExportLogsButton.IsEnabled = _backend.IsCoreConnected && _filteredLogs.Count > 0;
             ClearLogsButton.IsEnabled = _backend.IsCoreConnected && _allLogs.Count > 0;
         }
 
@@ -236,7 +235,8 @@ namespace CuckooInterfaceUI.Pages
 
         private void ExportLogs_Click(object sender, RoutedEventArgs e)
         {
-            var items = LogsList.Items.Cast<object>().OfType<LogEntry>().ToList();
+            // 导出当前筛选结果的全部日志，而不是仅当前页。
+            var items = _filteredLogs;
             if (items.Count == 0) return;
 
             var dialog = new SaveFileDialog
@@ -250,7 +250,7 @@ namespace CuckooInterfaceUI.Pages
             {
                 ExportLogsButton.IsEnabled = false;
                 var lines = items.Select(log =>
-                    $"{EscapeCsv(log.Time)},{EscapeCsv(log.LevelText)},{EscapeCsv(log.Logger)},{EscapeCsv(log.Message)}");
+                    $"{EscapeCsv(log.Time)},{EscapeCsv(log.LevelText)},{EscapeCsv(log.Message)}");
                 File.WriteAllLines(dialog.FileName, lines);
                 (Window.GetWindow(this) as MainWindow)?.ShowToast("导出成功", $"已导出 {items.Count} 条日志。");
             }
@@ -260,7 +260,7 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
-                ExportLogsButton.IsEnabled = _backend.IsCoreConnected && items.Count > 0;
+                ExportLogsButton.IsEnabled = _backend.IsCoreConnected && _filteredLogs.Count > 0;
             }
         }
 

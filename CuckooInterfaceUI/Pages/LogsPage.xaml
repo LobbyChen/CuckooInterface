@@ -56,7 +56,7 @@
 
         <Grid Grid.Row="1" Margin="0,0,0,12">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="160" /></Grid.ColumnDefinitions>
-            <ui:TextBox x:Name="SearchBox" Grid.Column="0" PlaceholderText="搜索消息或模块" TextChanged="SearchBox_TextChanged" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,10,0" />
+            <ui:TextBox x:Name="SearchBox" Grid.Column="0" PlaceholderText="搜索消息" TextChanged="SearchBox_TextChanged" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,10,0" />
             <ComboBox x:Name="LevelFilter" Grid.Column="1" SelectedIndex="0" SelectionChanged="LevelFilter_SelectionChanged" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Background="{DynamicResource ControlFillColorDefaultBrush}">
                 <ComboBoxItem Content="所有级别" Tag="" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                 <ComboBoxItem Content="DEBUG" Tag="DEBUG" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -69,22 +69,20 @@
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="4,0,4,6">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="78" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="78" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <TextBlock Text="时间" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <TextBlock Grid.Column="1" Text="级别" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Grid.Column="2" Text="模块" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Grid.Column="3" Text="消息" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="2" Text="消息" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                 </Grid>
                 <Grid Grid.Row="1">
                     <ui:ListView x:Name="LogsList" BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ui:ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid MinHeight="42">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="78" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="78" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Time}" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding LevelText}" FontSize="11" Foreground="{Binding LevelColor}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="{Binding Logger}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Message}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 </Grid>
                             </DataTemplate>
                         </ui:ListView.ItemTemplate>

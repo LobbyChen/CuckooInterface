@@ -62,6 +62,11 @@
                                    Appearance="Secondary"
                                    Margin="0,0,8,0"
                                    Click="RefreshEvents_Click" />
+                        <ui:Button x:Name="ExportEventsButton"
+                                   Content="导出"
+                                   Appearance="Secondary"
+                                   Margin="0,0,8,0"
+                                   Click="ExportEvents_Click" />
                         <ui:Button x:Name="OpenRegisteredButton"
                                    Content="查看已注册事件"
                                    Icon="{ui:SymbolIcon List24}"

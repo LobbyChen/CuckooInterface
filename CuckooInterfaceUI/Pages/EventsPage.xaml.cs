@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using CuckooInterfaceUI.Models;
 using CuckooInterfaceUI.Services;
 using Wpf.Ui.Controls;
@@ -72,6 +74,7 @@ namespace CuckooInterfaceUI.Pages
                     RefreshEventsButton.IsEnabled = false;
                     OpenRegisteredButton.IsEnabled = false;
                     OpenPublishButton.IsEnabled = false;
+                    ExportEventsButton.IsEnabled = false;
                 }
 
                 var recentTask = _backend.GetRecentEventsAsync();
@@ -108,6 +111,7 @@ namespace CuckooInterfaceUI.Pages
                 RefreshEventsButton.IsEnabled = connected;
                 OpenRegisteredButton.IsEnabled = connected;
                 OpenPublishButton.IsEnabled = connected;
+                ExportEventsButton.IsEnabled = connected && _allEvents.Count > 0;
             }
         }
 
@@ -132,6 +136,44 @@ namespace CuckooInterfaceUI.Pages
         private async void RefreshEvents_Click(object sender, RoutedEventArgs e)
         {
             await LoadDataAsync();
+        }
+
+        private void ExportEvents_Click(object sender, RoutedEventArgs e)
+        {
+            // 导出 Core 当前返回的全部事件，而不是仅当前页。
+            var items = _allEvents;
+            if (items.Count == 0) return;
+
+            var dialog = new SaveFileDialog
+            {
+                Filter = "CSV 文件 (*.csv)|*.csv|文本文件 (*.txt)|*.txt",
+                FileName = $"cuckoo_events_{DateTime.Now:yyyyMMdd_HHmmss}"
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                ExportEventsButton.IsEnabled = false;
+                var lines = items.Select(evt =>
+                    $"{EscapeCsv(evt.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))}," +
+                    $"{EscapeCsv(evt.LevelText)},{EscapeCsv(evt.EventName)},{EscapeCsv(evt.Payload)}");
+                File.WriteAllLines(dialog.FileName, lines);
+                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出成功", $"已导出 {items.Count} 条事件。");
+            }
+            catch (Exception ex)
+            {
+                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出失败", ex.Message, true);
+            }
+            finally
+            {
+                ExportEventsButton.IsEnabled = _backend.IsCoreConnected && _allEvents.Count > 0;
+            }
+        }
+
+        private static string EscapeCsv(string value)
+        {
+            if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0) return value;
+            return $"\"{value.Replace("\"", "\"\"")}\"";
         }
 
         private void UpdateRecentEmptyState(bool disconnected)
@@ -161,6 +203,7 @@ namespace CuckooInterfaceUI.Pages
             RecentEventsList.ItemsSource = pageItems;
             UpdateRecentEmptyState(false);
             UpdateEventsPagination(totalPages);
+            ExportEventsButton.IsEnabled = _backend.IsCoreConnected && _allEvents.Count > 0;
         }
 
         private void UpdateEventsPagination(int totalPages)
@@ -201,6 +244,7 @@ namespace CuckooInterfaceUI.Pages
             RefreshEventsButton.IsEnabled = false;
             OpenRegisteredButton.IsEnabled = false;
             OpenPublishButton.IsEnabled = false;
+            ExportEventsButton.IsEnabled = false;
         }
 
         private async void OpenPublishPanel_Click(object sender, RoutedEventArgs e)
