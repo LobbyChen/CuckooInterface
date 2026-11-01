@@ -168,13 +168,12 @@
                                                        Click="DeletePlugin_Click" />
                                         </StackPanel>
 
-                                        <ui:ToggleSwitch IsChecked="{Binding IsEnabled}"
+                                        <ui:ToggleSwitch IsChecked="{Binding IsEnabled, Mode=OneWay}"
                                                          IsEnabled="{Binding CanToggle}"
                                                          OffContent="已禁用"
                                                          OnContent="已启用"
                                                          VerticalAlignment="Center"
-                                                         Checked="PluginToggle_Changed"
-                                                         Unchecked="PluginToggle_Changed"
+                                                         Click="PluginToggle_Changed"
                                                          Tag="{Binding}" />
                                     </DockPanel>
                                 </StackPanel>
