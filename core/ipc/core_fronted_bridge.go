@@ -298,6 +298,10 @@ func (ipc *CoreIpcInterface) handleGetPlugins() (json.RawMessage, error) {
 			IsEnabled:   enabledKernelIDs[f.Meta.ID],
 			IsLoaded:    false,
 		}
+		// 只有声明且文件存在的 config_page 才算可配置，前端据此决定是否展示配置入口。
+		if _, ok := f.ConfigPagePath(); ok {
+			dto.HasConfigPage = true
+		}
 		// Kernel 由 KernelManager 管理，已初始化即视为运行中
 		if isKernel && enabledKernelIDs[f.Meta.ID] {
 			dto.IsLoaded = true

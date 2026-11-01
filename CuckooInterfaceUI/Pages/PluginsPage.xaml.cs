@@ -97,7 +97,7 @@ namespace CuckooInterfaceUI.Pages
 
         /// <summary>插件列表状态签名，用于判断自动刷新时数据是否真的变化。</summary>
         private static string PluginsSignature(List<PluginInfo> plugins) =>
-            string.Join("|", plugins.Select(p => $"{p.Id}:{p.IsEnabled}:{p.IsLoaded}"));
+            string.Join("|", plugins.Select(p => $"{p.Id}:{p.IsEnabled}:{p.IsLoaded}:{p.HasConfigPage}"));
 
         private void ApplyFilter()
         {
@@ -199,15 +199,18 @@ namespace CuckooInterfaceUI.Pages
 
         private void PluginSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is FrameworkElement element &&
-                element.Tag is PluginInfo plugin &&
-                plugin.Type == PluginType.Kernel)
+            if (sender is not FrameworkElement element || element.Tag is not PluginInfo plugin)
+                return;
+
+            // Kernel 的入口是运行时详情；其余插件仅在提供配置页时可用。
+            if (plugin.Type == PluginType.Kernel)
             {
                 RuntimesPage.PendingKernelId = plugin.Id;
                 NavigateTo(typeof(RuntimesPage));
                 return;
             }
 
+            ConfigPage.PendingPluginId = plugin.Id;
             NavigateTo(typeof(ConfigPage));
         }
 

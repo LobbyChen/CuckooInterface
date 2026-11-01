@@ -37,6 +37,9 @@ namespace CuckooInterfaceUI.Models
         public List<string> ProvidedEvents { get; set; } = new();
         public List<string> Listeners { get; set; } = new();
 
+        /// <summary>插件是否声明了可用的配置页（META-INF.json 的 config_page）。</summary>
+        public bool HasConfigPage { get; set; }
+
         public bool IsEnabled
         {
             get => _isEnabled;
@@ -74,6 +77,11 @@ namespace CuckooInterfaceUI.Models
         /// 是否允许卸载。Kernel 由系统统一管理，不允许卸载。
         /// </summary>
         public bool CanUninstall => Type != PluginType.Kernel;
+
+        /// <summary>
+        /// 是否可打开设置入口。Kernel 入口为运行时详情；其余插件必须提供配置页。
+        /// </summary>
+        public bool CanOpenSettings => Type == PluginType.Kernel || HasConfigPage;
 
         public string StatusText
         {

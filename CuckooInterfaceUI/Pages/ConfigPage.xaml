@@ -7,7 +7,6 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2006"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:pages="clr-namespace:CuckooInterfaceUI.Pages"
-      xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
       mc:Ignorable="d"
       d:DesignHeight="600" d:DesignWidth="900"
       Title="ConfigPage">
@@ -34,10 +33,6 @@
 			</EventTrigger>
 		</Grid.Triggers>
 
-		<!--
-            页面高度明确拆成：标题 / 后端状态 / 主内容。
-            状态区域独占一行，绝不覆盖插件列表或右侧配置面板。
-        -->
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto" />
 			<RowDefinition Height="*" />
@@ -120,12 +115,28 @@
 
 					<!-- 配置区头部 -->
 					<StackPanel Grid.Row="0" Margin="0,0,0,16">
-						<TextBlock x:Name="SelectedPluginName"
-                                   Text="请选择左侧插件"
-                                   FontSize="18"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis" />
+						<Grid>
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="*" />
+								<ColumnDefinition Width="Auto" />
+							</Grid.ColumnDefinitions>
+
+							<TextBlock Grid.Column="0"
+                                       x:Name="SelectedPluginName"
+                                       Text="请选择左侧插件"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+							<TextBlock Grid.Column="1"
+                                       x:Name="ConfigLoadingIndicator"
+                                       Text="加载中"
+                                       Margin="10,0,0,0"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"
+                                       Visibility="Collapsed"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+						</Grid>
 						<TextBlock x:Name="SelectedPluginDesc"
                                    Text="从左侧列表选择一个插件以查看其配置项"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -134,13 +145,14 @@
 					</StackPanel>
 
 					<!--
-                        插件配置页：由插件 META-INF.json 的 config_page 指定 HTML，
-                        通过 WebView2 加载；未提供配置页时显示下方空状态。
+                        插件配置页：由插件 META-INF.json 的 config_page 指定 HTML。
+                        每个插件独享一个 WebView2，按插件 ID 缓存在 ConfigViewHost 中，
+                        仅在用户选中该插件时才创建并加载，避免共用同一页面导致配置内容混用。
                     -->
 					<Grid Grid.Row="1">
-						<wv2:WebView2 x:Name="ConfigWebView"
-						              HorizontalAlignment="Stretch"
-						              VerticalAlignment="Stretch" />
+						<Grid x:Name="ConfigViewHost"
+						      HorizontalAlignment="Stretch"
+						      VerticalAlignment="Stretch" />
 
 						<Border x:Name="ConfigEmptyState"
 						        MinHeight="240"

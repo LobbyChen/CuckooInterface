@@ -154,6 +154,7 @@ type PluginDto struct {
 	RuntimeType    string   `json:"runtimeType"`
 	ProvidedEvents []string `json:"providedEvents"`
 	Listeners      []string `json:"listeners"`
+	HasConfigPage  bool     `json:"hasConfigPage"` // 是否声明了可用的配置页
 }
 
 // PluginConfigDto 插件配置模型

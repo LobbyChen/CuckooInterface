@@ -158,6 +158,7 @@
                                                        Margin="0,0,4,0"
                                                        ToolTip="插件设置 / 运行时详情"
                                                        Tag="{Binding}"
+                                                       IsEnabled="{Binding CanOpenSettings}"
                                                        Click="PluginSettings_Click" />
                                             <ui:Button Icon="{ui:SymbolIcon Delete24}"
                                                        Appearance="Danger"
