@@ -53,7 +53,6 @@ namespace CuckooInterfaceUI.Pages
         /// <summary>
         /// 加载插件列表。
         /// interactive=true：用户点击或连接恢复，给出按钮禁用与错误提示；
-        /// interactive=false：2s 自动刷新的静默模式，数据未变化时完全不重建 UI。
         /// </summary>
         private async Task LoadPluginsFromBackendAsync(bool interactive = true)
         {

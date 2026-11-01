@@ -15,6 +15,7 @@ import (
 	"net"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,22 +24,22 @@ import (
 )
 
 // 与IPC的UI层接口定义
-
 type CoreIpcInterface struct {
-	km   *plugin_manager.KernelManager
-	pfm  *plugin_manager.PluginFileManager
-	pm   *plugin_manager.PluginManager
-	rm   *runtime_manager.Manager
-	ebus *event.EventBus
-	cfg  *config.CfgManager
-	once sync.Once
+	km      *plugin_manager.KernelManager
+	pfm     *plugin_manager.PluginFileManager
+	pm      *plugin_manager.PluginManager
+	rm      *runtime_manager.Manager
+	ebus    *event.EventBus
+	cfg     *config.CfgManager
+	once    sync.Once
+	funcMap map[string]func(params json.RawMessage) (json.RawMessage, error)
 
 	logger    *logger.Logger
 	listener  net.Listener
 	startTime time.Time
 }
 
-// Init 注入核心组件依赖（仅生效一次）
+// Init 注入核心组件依赖
 func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_manager.PluginFileManager, pm *plugin_manager.PluginManager, rm *runtime_manager.Manager, ebus *event.EventBus, cfg *config.CfgManager, logger *logger.Logger) {
 	ipc.once.Do(func() {
 		ipc.km = km
@@ -49,6 +50,35 @@ func (ipc *CoreIpcInterface) Init(km *plugin_manager.KernelManager, pfm *plugin_
 		ipc.logger = logger
 		ipc.ebus = ebus
 		ipc.startTime = time.Now()
+		// 设置映射
+		ipc.funcMap = map[string]func(json.RawMessage) (json.RawMessage, error){
+			MethodGetOverview:              func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetOverview() },
+			MethodGetPlugins:               func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetPlugins() },
+			MethodTogglePlugin:             ipc.handleTogglePlugin,
+			MethodRemovePlugin:             ipc.handleRemovePlugin,
+			MethodLoadPlugin:               ipc.handleLoadPlugin,
+			MethodUnloadPlugin:             ipc.handleUnloadPlugin,
+			MethodInstallPlugin:            ipc.handleInstallPlugin,
+			MethodGetPluginConfig:          ipc.handleGetPluginConfig,
+			MethodSavePluginConfig:         ipc.handleSavePluginConfig,
+			MethodGetRecentEvents:          func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetRecentEvents() },
+			MethodGetRegisteredEvents:      func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetRegisteredEvents() },
+			MethodGetEventOptions:          func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetEventOptions() },
+			MethodPublishEvent:             ipc.handlePublishEvent,
+			MethodGetLogs:                  func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetLogs() },
+			MethodClearLogs:                func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleClearLogs() },
+			MethodGetSettingsPanel:         func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetSettingsPanel() },
+			MethodGetAppearanceSettings:    func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetAppearanceSettings() },
+			MethodSaveSettings:             ipc.handleSaveSettings,
+			MethodGetRuntimes:              func(_ json.RawMessage) (json.RawMessage, error) { return ipc.handleGetRuntimes() },
+			MethodGetRuntimeState:          ipc.handleGetRuntimeState,
+			MethodGetRuntimeSettingsPanel:  ipc.handleGetRuntimeSettingsPanel,
+			MethodSetRuntimeSetting:        ipc.handleSetRuntimeSetting,
+			MethodGetRuntimeOperations:     ipc.handleGetRuntimeOperations,
+			MethodInvokeRuntimeOperation:   ipc.handleInvokeRuntimeOperation,
+			MethodGetRuntimeSelectionPanel: ipc.handleGetRuntimeSelectionPanel,
+			MethodSelectRuntime:            ipc.handleSelectRuntime,
+		}
 	})
 }
 
@@ -118,7 +148,6 @@ func (ipc *CoreIpcInterface) waitForReceivedData() ([]byte, error) {
 }
 
 // ServeLoop 持续接受前端连接，读取请求并返回响应。
-// 每个连接处理一次请求-响应后关闭，由前端重新连接发起下一次调用。
 func (ipc *CoreIpcInterface) ServeLoop() {
 	for {
 		conn, err := ipc.listener.Accept()
@@ -166,64 +195,11 @@ func (ipc *CoreIpcInterface) HandleRequest(data []byte) []byte {
 		result []byte
 		err    error
 	)
-
-	switch req.Method {
-	case MethodGetOverview:
-		result, err = ipc.handleGetOverview()
-	case MethodGetPlugins:
-		result, err = ipc.handleGetPlugins()
-	case MethodTogglePlugin:
-		result, err = ipc.handleTogglePlugin(req.Params)
-	case MethodRemovePlugin:
-		result, err = ipc.handleRemovePlugin(req.Params)
-	case MethodLoadPlugin:
-		result, err = ipc.handleLoadPlugin(req.Params)
-	case MethodUnloadPlugin:
-		result, err = ipc.handleUnloadPlugin(req.Params)
-	case MethodInstallPlugin:
-		result, err = ipc.handleInstallPlugin(req.Params)
-	case MethodGetPluginConfig:
-		result, err = ipc.handleGetPluginConfig(req.Params)
-	case MethodSavePluginConfig:
-		result, err = ipc.handleSavePluginConfig(req.Params)
-	case MethodGetRecentEvents:
-		result, err = ipc.handleGetRecentEvents()
-	case MethodGetRegisteredEvents:
-		result, err = ipc.handleGetRegisteredEvents()
-	case MethodGetEventOptions:
-		result, err = ipc.handleGetEventOptions()
-	case MethodPublishEvent:
-		result, err = ipc.handlePublishEvent(req.Params)
-	case MethodGetLogs:
-		result, err = ipc.handleGetLogs()
-	case MethodClearLogs:
-		result, err = ipc.handleClearLogs()
-	case MethodGetSettingsPanel:
-		result, err = ipc.handleGetSettingsPanel()
-	case MethodGetAppearanceSettings:
-		result, err = ipc.handleGetAppearanceSettings()
-	case MethodSaveSettings:
-		result, err = ipc.handleSaveSettings(req.Params)
-	case MethodGetRuntimes:
-		result, err = ipc.handleGetRuntimes()
-	case MethodGetRuntimeState:
-		result, err = ipc.handleGetRuntimeState(req.Params)
-	case MethodGetRuntimeSettingsPanel:
-		result, err = ipc.handleGetRuntimeSettingsPanel(req.Params)
-	case MethodSetRuntimeSetting:
-		result, err = ipc.handleSetRuntimeSetting(req.Params)
-	case MethodGetRuntimeOperations:
-		result, err = ipc.handleGetRuntimeOperations(req.Params)
-	case MethodInvokeRuntimeOperation:
-		result, err = ipc.handleInvokeRuntimeOperation(req.Params)
-	case MethodGetRuntimeSelectionPanel:
-		result, err = ipc.handleGetRuntimeSelectionPanel(req.Params)
-	case MethodSelectRuntime:
-		result, err = ipc.handleSelectRuntime(req.Params)
-	default:
+	handler, ok := ipc.funcMap[req.Method]
+	if !ok {
 		return ipc.errorResp(req.ID, "unknown method: "+req.Method)
 	}
-
+	result, err = handler(req.Params)
 	if err != nil {
 		return ipc.errorResp(req.ID, err.Error())
 	}
@@ -245,46 +221,6 @@ func (ipc *CoreIpcInterface) errorResp(id int64, errMsg string) []byte {
 }
 
 // 插件类型转换
-
-func plugTypeToString(t constant.PlugType) string {
-	switch t {
-	case constant.KERNEL:
-		return "kernel"
-	case constant.BASE:
-		return "base"
-	case constant.ACTIVE:
-		return "active"
-	default:
-		return "unknown"
-	}
-}
-
-func plugTypeFolder(t constant.PlugType) string {
-	switch t {
-	case constant.KERNEL:
-		return "Kernel"
-	case constant.BASE:
-		return "Base"
-	case constant.ACTIVE:
-		return "Active"
-	default:
-		return "Unknown"
-	}
-}
-
-func stringToPlugType(s string) (constant.PlugType, error) {
-	switch s {
-	case "kernel":
-		return constant.KERNEL, nil
-	case "base":
-		return constant.BASE, nil
-	case "active":
-		return constant.ACTIVE, nil
-	default:
-		return 0, fmt.Errorf("unknown plugin type: %s", s)
-	}
-}
-
 // 概览
 
 func (ipc *CoreIpcInterface) handleGetOverview() (json.RawMessage, error) {
@@ -328,15 +264,6 @@ func (ipc *CoreIpcInterface) handleGetOverview() (json.RawMessage, error) {
 		Uptime:          uptime,
 	}
 	return json.Marshal(dto)
-}
-
-func formatUptime(d time.Duration) string {
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh %dm", h, m)
-	}
-	return fmt.Sprintf("%dm %ds", m, int(d.Seconds())%60)
 }
 
 // 插件
@@ -594,8 +521,7 @@ func (ipc *CoreIpcInterface) handleGetRecentEvents() (json.RawMessage, error) {
 
 	dtos := make([]EventRecordDto, 0, len(events))
 	// EventBus 的 RingQueue 返回顺序为旧 → 新，UI 列表按新 → 旧展示。
-	for i := len(events) - 1; i >= 0; i-- {
-		e := events[i]
+	for _, e := range slices.Backward(events) {
 		dtos = append(dtos, EventRecordDto{
 			Timestamp: e.GetTimeStamp(),
 			EventName: e.GetName(),
@@ -686,7 +612,7 @@ func (ipc *CoreIpcInterface) handleGetAppearanceSettings() (json.RawMessage, err
 }
 
 func (ipc *CoreIpcInterface) handleSaveSettings(params json.RawMessage) (json.RawMessage, error) {
-	var values map[string]interface{}
+	var values map[string]any
 	if err := json.Unmarshal(params, &values); err != nil {
 		return nil, fmt.Errorf("invalid settings payload: %w", err)
 	}
@@ -789,4 +715,54 @@ func (ipc *CoreIpcInterface) handleSelectRuntime(params json.RawMessage) (json.R
 		return nil, err
 	}
 	return json.Marshal(result)
+}
+
+// 辅助函数
+
+func plugTypeToString(t constant.PlugType) string {
+	switch t {
+	case constant.KERNEL:
+		return "kernel"
+	case constant.BASE:
+		return "base"
+	case constant.ACTIVE:
+		return "active"
+	default:
+		return "unknown"
+	}
+}
+
+func plugTypeFolder(t constant.PlugType) string {
+	switch t {
+	case constant.KERNEL:
+		return "Kernel"
+	case constant.BASE:
+		return "Base"
+	case constant.ACTIVE:
+		return "Active"
+	default:
+		return "Unknown"
+	}
+}
+
+func stringToPlugType(s string) (constant.PlugType, error) {
+	switch s {
+	case "kernel":
+		return constant.KERNEL, nil
+	case "base":
+		return constant.BASE, nil
+	case "active":
+		return constant.ACTIVE, nil
+	default:
+		return 0, fmt.Errorf("unknown plugin type: %s", s)
+	}
+}
+
+func formatUptime(d time.Duration) string {
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm %ds", m, int(d.Seconds())%60)
 }
