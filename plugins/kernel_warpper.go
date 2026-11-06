@@ -54,7 +54,7 @@ typedef const char* (*get_config_fn)(const char*);
 typedef void (*loop_report_fn)(const char*);
 typedef const char* (*operation_fn)(const char*, const char*);
 typedef void (*panic_fn)(const char*);
-typedef void (*writecfg_fn)(const char*, const char*);
+typedef void (*write_config_fn)(const char*, const char*);
 static emit_event_fn get_emit_event_bridge(void)       { return c_emit_event_bridge; }
 static log_fn        get_log_info_bridge(void)          { return c_log_info_bridge; }
 static log_fn        get_log_error_bridge(void)         { return c_log_error_bridge; }
@@ -339,9 +339,7 @@ func (k *Kernel) GetChan() chan struct{} {
 
 /* Runtime Control Plane */
 
-// controlCall 在持有 k.mu 的整个区间内完成一次 Runtime Control 调用：
-// 锁内检查存活、分配 host API 表、提交任务并释放响应，与
-// ShutdownRuntime/Destroy 的释放操作互斥，避免句柄 use-after-free。
+// controlCall 在持有 k.mu 的整个区间内完成一次 Runtime Control 调用
 func (k *Kernel) controlCall(
 	callFn func(handle unsafe.Pointer, cAPI *C.CuckooHostAPI, response **C.char) C.int,
 ) (string, error) {
@@ -523,7 +521,6 @@ func convertDescriptor(c *C.CuckooPluginDescriptor) *PluginDescriptor {
 	}
 	n := int(c.listener_count)
 	if n < 0 || n > C.MAX_LISTENERS_PER_PLUGIN {
-		// C 端返回越界 count，防御性截断并留空，避免越界访问 listeners 数组
 		n = 0
 	}
 	if n > 0 {

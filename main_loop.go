@@ -66,7 +66,7 @@ func runMainLoop(ctx context.Context, isService bool) {
 		log.Fatal(fmt.Sprintf("Failed to initialize core folders: %v", err))
 	}
 
-	// 开机自启动是当前用户注册表项；服务进程运行在系统账户下，不在此处理。
+	// 开机自启动是当前用户注册表项
 	if !isService {
 		if err := utils.SetAutoStartForSID(globalCfg.ServiceUserSID, globalCfg.AutoStart); err != nil {
 			log.Warnf("Failed to reconcile autostart setting: %v", err)
@@ -90,7 +90,7 @@ func runMainLoop(ctx context.Context, isService bool) {
 	// 注册内部事件源
 	frameworkMonitor := &foundation.FrameworkMonitor{}
 	registerInternalEvent(internalEventBus, frameworkMonitor, log)
-	// 磁盘插拔监控（system.disk.*）
+	// 磁盘插拔监控
 	registerInternalEvent(internalEventBus, &disk.DiskMonitor{}, log)
 	// TODO 注入更多events
 	// 启动内部事件
@@ -118,6 +118,12 @@ func runMainLoop(ctx context.Context, isService bool) {
 			log.Errorf("KERNEL PANIC: %s", reason)
 			_ = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprintf("Kernel crashed:\n%s", reason))
 		},
+		WritePluginConfig: func(pluginName, config string) {
+			err := cfgManager.SetConfig(pluginName, config)
+			if err != nil {
+				log.Warnf("Failed to write plugin config: %v", err)
+			}
+		},
 	}
 	plugins.InjectHostAPI(hostAPI)
 
@@ -127,8 +133,6 @@ func runMainLoop(ctx context.Context, isService bool) {
 	km.InjectPluginFileManager(pfm)
 	km.InjectHostAPI(hostAPI)
 	pm := plugin_manager.NewPluginManager(log, &km, pfm, eventBus)
-	// RuntimeManager 负责 Kernel 运行时状态、控制面与运行环境偏好。
-	// 必须在 loadPlugins 之前创建，以便把 Python 运行时偏好写入进程环境。
 	rm := runtime_manager.New(&km, pm, log, cfgPath)
 	// 插件装载状态变化时广播 foundation.plugin.loaded / unloaded
 	pm.SetPluginEventHook(func(loaded bool, meta plugins.PluginMetaData, typo constant.PlugType) {
