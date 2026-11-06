@@ -18,7 +18,7 @@ extern char* go_get_plugin_config_gateway(char* plug_name);
 extern void go_into_loop_report_gateway(char* kernel_id);
 extern char* go_operation_gateway(char* operation_id, char* request_json);
 extern void go_panic_gateway(char* reason);
-extern void go_write_plugin_config_gateway(const char* plugin_name,const char* json_payload);
+extern void go_write_plugin_config_gateway(char* plugin_name,char* json_payload);
 // 桥接函数
 static void c_emit_event_bridge(const char* eventName, const char* jsonPayload) {
 go_emit_event_gateway((char*)eventName, (char*)jsonPayload);
