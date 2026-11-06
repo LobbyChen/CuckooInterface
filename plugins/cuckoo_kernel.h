@@ -27,10 +27,10 @@ typedef struct {
 
   /* 返回值生命周期仅保证到本次调用结束。 */
   const char* (*get_plugin_config)(const char* plugin_name);
-
+  void (*write_plugin_config)(const char* plugin_name,const char* json_payload);
   void (*into_loop_report)(const char* kernel_id);
 
-  /* 例如 ui.confirm / ui.notify / ui.browse_file / download。 */
+  /* 例如 ui.confirm / ui.notify / ui.browse_file / download */
   const char* (*operation)(const char* operation_id,
                            const char* request_json);
 
@@ -94,10 +94,6 @@ typedef struct {
   /*
    * 释放 Control Plane 返回的 JSON 字符串。
    * Host/Core 不得直接 free Kernel-owned memory。
-   * 注意：Kernel 只要实现任意 Control Plane 接口
-   * （get_settings_panel / get_runtime_state / set_setting /
-   *  get_operations / invoke_operation），就必须同时提供本回调，
-   * 否则 Sandbox 会拒绝执行该 Control 调用（返回 -2）。
    */
   void (*free_response)(char* response);
 

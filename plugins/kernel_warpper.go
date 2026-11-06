@@ -18,6 +18,7 @@ extern char* go_get_plugin_config_gateway(char* plug_name);
 extern void go_into_loop_report_gateway(char* kernel_id);
 extern char* go_operation_gateway(char* operation_id, char* request_json);
 extern void go_panic_gateway(char* reason);
+extern void go_write_plugin_config_gateway(const char* plugin_name,const char* json_payload);
 // 桥接函数
 static void c_emit_event_bridge(const char* eventName, const char* jsonPayload) {
 go_emit_event_gateway((char*)eventName, (char*)jsonPayload);
@@ -33,6 +34,9 @@ return (const char*)go_get_plugin_config_gateway((char*)plug_name);
 }
 static void c_into_loop_report_bridge(const char* kernel_id) {
 go_into_loop_report_gateway((char*)kernel_id);
+}
+static void c_write_plugin_config_bridge(const char* plugin_name,const char* json_payload){
+go_write_plugin_config_gateway((char*)plugin_name,(char*)json_payload);
 }
 static const char* c_operation_bridge(const char* operation_id,
                                       const char* request_json) {
@@ -50,10 +54,12 @@ typedef const char* (*get_config_fn)(const char*);
 typedef void (*loop_report_fn)(const char*);
 typedef const char* (*operation_fn)(const char*, const char*);
 typedef void (*panic_fn)(const char*);
+typedef void (*writecfg_fn)(const char*, const char*);
 static emit_event_fn get_emit_event_bridge(void)       { return c_emit_event_bridge; }
 static log_fn        get_log_info_bridge(void)          { return c_log_info_bridge; }
 static log_fn        get_log_error_bridge(void)         { return c_log_error_bridge; }
 static get_config_fn get_get_plugin_config_bridge(void) { return c_get_plugin_config_bridge; }
+static write_config_fn get_write_plugin_config_bridge(void) { return c_write_plugin_config_bridge; }
 static loop_report_fn get_into_loop_report_bridge(void) { return c_into_loop_report_bridge; }
 static operation_fn  get_operation_bridge(void)         { return c_operation_bridge; }
 static panic_fn      get_panic_bridge(void)             { return c_panic_bridge; }
@@ -100,15 +106,16 @@ type PluginDescriptor struct {
 	InternalObjectPtr unsafe.Pointer
 }
 
-// HostAPI 修正：移除 GetConfig，增加 IntoLoopReport 和 Panic
+// HostAPI Core暴露给C的API
 type HostAPI struct {
-	EmitEvent       func(eventName, payload string)
-	LogInfo         func(msg string)
-	LogError        func(msg string)
-	GetPluginConfig func(plugin_name string) string
-	IntoLoopReport  func(kernel_id string)
-	Operation       func(operationID, requestJSON string) string
-	Panic           func(reason string)
+	EmitEvent         func(eventName, payload string)
+	LogInfo           func(msg string)
+	LogError          func(msg string)
+	GetPluginConfig   func(plugin_name string) string
+	IntoLoopReport    func(kernel_id string)
+	Operation         func(operationID, requestJSON string) string
+	Panic             func(reason string)
+	WritePluginConfig func(plugin_name, config string)
 }
 type Kernel struct {
 	sandboxHandle unsafe.Pointer
@@ -193,6 +200,14 @@ func go_get_plugin_config_gateway(plugname *C.char) *C.char {
 	return nil
 }
 
+//export go_write_plugin_config_gateway
+func go_write_plugin_config_gateway(plugname *C.char, payload *C.char) {
+	api := currentHostAPI()
+	if api != nil && api.WritePluginConfig != nil {
+		api.WritePluginConfig(C.GoString(plugname), C.GoString(payload))
+	}
+}
+
 //export go_into_loop_report_gateway
 func go_into_loop_report_gateway(kernelID *C.char) {
 	id := C.GoString(kernelID)
@@ -238,6 +253,7 @@ func allocCHostAPI(_ *HostAPI) *C.CuckooHostAPI {
 	cAPI.into_loop_report = (*[0]byte)(unsafe.Pointer(C.get_into_loop_report_bridge()))
 	cAPI.operation = (*[0]byte)(unsafe.Pointer(C.get_operation_bridge()))
 	cAPI.panic = (*[0]byte)(unsafe.Pointer(C.get_panic_bridge()))
+	cAPI.write_plugin_config = (*[0]byte)(unsafe.Pointer(C.get_write_plugin_config_bridge()))
 	return cAPI
 }
 
