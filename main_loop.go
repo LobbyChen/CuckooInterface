@@ -66,7 +66,7 @@ func runMainLoop(ctx context.Context, isService bool) {
 		log.Fatal(fmt.Sprintf("Failed to initialize core folders: %v", err))
 	}
 
-	// 开机自启动是当前用户注册表项；服务进程运行在系统账户下，不在此处理。
+	// 开机自启动是当前用户注册表项
 	if !isService {
 		if err := utils.SetAutoStartForSID(globalCfg.ServiceUserSID, globalCfg.AutoStart); err != nil {
 			log.Warnf("Failed to reconcile autostart setting: %v", err)
@@ -90,7 +90,7 @@ func runMainLoop(ctx context.Context, isService bool) {
 	// 注册内部事件源
 	frameworkMonitor := &foundation.FrameworkMonitor{}
 	registerInternalEvent(internalEventBus, frameworkMonitor, log)
-	// 磁盘插拔监控（system.disk.*）
+	// 磁盘插拔监控
 	registerInternalEvent(internalEventBus, &disk.DiskMonitor{}, log)
 	// TODO 注入更多events
 	// 启动内部事件
@@ -117,6 +117,12 @@ func runMainLoop(ctx context.Context, isService bool) {
 		Panic: func(reason string) {
 			log.Errorf("KERNEL PANIC: %s", reason)
 			_ = utils.ShowErrorBox(constant.ErrorMsgTitle, fmt.Sprintf("Kernel crashed:\n%s", reason))
+		},
+		WritePluginConfig: func(pluginName, config string) {
+			err := cfgManager.SetConfig(pluginName, config)
+			if err != nil {
+				log.Warnf("Failed to write plugin config: %v", err)
+			}
 		},
 	}
 	plugins.InjectHostAPI(hostAPI)
