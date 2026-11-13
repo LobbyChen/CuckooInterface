@@ -127,8 +127,6 @@ func runMainLoop(ctx context.Context, isService bool) {
 	km.InjectPluginFileManager(pfm)
 	km.InjectHostAPI(hostAPI)
 	pm := plugin_manager.NewPluginManager(log, &km, pfm, eventBus)
-	// RuntimeManager 负责 Kernel 运行时状态、控制面与运行环境偏好。
-	// 必须在 loadPlugins 之前创建，以便把 Python 运行时偏好写入进程环境。
 	rm := runtime_manager.New(&km, pm, log, cfgPath)
 	// 插件装载状态变化时广播 foundation.plugin.loaded / unloaded
 	pm.SetPluginEventHook(func(loaded bool, meta plugins.PluginMetaData, typo constant.PlugType) {

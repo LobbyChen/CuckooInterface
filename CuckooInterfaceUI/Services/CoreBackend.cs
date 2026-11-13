@@ -20,8 +20,8 @@ namespace CuckooInterfaceUI.Services
     /// </summary>
     public sealed class CoreBackend
     {
-        private const string CorePipeName = "CuckooCoreInterfaceBridge";
-        private const string DaemonPipeName = "CuckooDaemonInterfaceBridge";
+        private const string DefaultCorePipeName = "CuckooCoreInterfaceBridge";
+        private const string DefaultDaemonPipeName = "CuckooDaemonInterfaceBridge";
         private const byte PacketMarker = 0x6F;
         private const int MaxPayloadLength = 1024 * 1024;
         private const int ConnectTimeoutMilliseconds = 1500;
@@ -35,6 +35,41 @@ namespace CuckooInterfaceUI.Services
         private readonly object _connectionStateLock = new();
         private bool _isCoreConnected;
         private bool _isDaemonConnected;
+
+        private string _corePipeName = DefaultCorePipeName;
+        private string _daemonPipeName = DefaultDaemonPipeName;
+
+        public string CorePipeName => _corePipeName;
+        public string DaemonPipeName => _daemonPipeName;
+
+        /// <summary>
+        /// 设置 Core / Daemon 命名管道的名称，必须在首次建立连接前调用。
+        /// 支持传入完整管道路径（如 \\.\pipe\CuckooCoreInterfaceBridge）或裸管道名。
+        /// 传入 null / 空白 时保留默认值。
+        /// </summary>
+        public void ConfigurePipeNames(string? corePipeName, string? daemonPipeName)
+        {
+            _corePipeName = NormalizePipeName(corePipeName) ?? DefaultCorePipeName;
+            _daemonPipeName = NormalizePipeName(daemonPipeName) ?? DefaultDaemonPipeName;
+        }
+
+        private static string? NormalizePipeName(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            var name = value.Trim();
+            foreach (var prefix in new[] { @"\\.\pipe\", @"\\?\pipe\" })
+            {
+                if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    name = name[prefix.Length..];
+                    break;
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
 
         public event EventHandler<BackendConnectionStateChangedEventArgs>? ConnectionStateChanged;
 

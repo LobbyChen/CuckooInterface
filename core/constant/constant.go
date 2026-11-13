@@ -83,8 +83,8 @@ const (
 )
 
 // namepipe定义
-const CoreNamePipe string = "\\\\.\\pipe\\CuckooCoreInterfaceBridge"
-const DaemonNamePipe string = "\\\\.\\pipe\\CuckooDaemonInterfaceBridge"
+const CoreNamePipePrefix string = "\\\\.\\pipe\\CuckooCoreInterfaceBridge-%s"
+const DaemonNamePipePrefix string = "\\\\.\\pipe\\CuckooDaemonInterfaceBridge-%s"
 
 // 错误消息定义
 const ErrorMsgTitle string = "CuckooInterface遇到问题"
