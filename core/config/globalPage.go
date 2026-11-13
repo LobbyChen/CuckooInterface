@@ -51,10 +51,6 @@ func syncSettingsToCoreConfig(values map[string]interface{}) {
 			coreCfg.AutoStart = toBool(v, coreCfg.AutoStart)
 		case "singleInstance":
 			coreCfg.SingleInstance = toBool(v, coreCfg.SingleInstance)
-		case "serviceMode":
-			coreCfg.ServiceMode = toBool(v, coreCfg.ServiceMode)
-		case "serviceUserSid":
-			coreCfg.ServiceUserSID = toString(v, coreCfg.ServiceUserSID)
 		case "logLevel":
 			coreCfg.LogLevel = toString(v, coreCfg.LogLevel)
 		case "logMaxSize":
@@ -161,24 +157,6 @@ func BuildSettingsPanel() SettingPanel {
 								},
 								true,
 								true,
-							),
-						},
-					},
-					{
-						Key:  "service",
-						Name: "系统服务",
-						Settings: []Setting{
-							NewSetting(
-								SettingDefinition{
-									Key:                "serviceMode",
-									Name:               "将 Core 注册为系统服务并开机自启",
-									Description:        "需要管理员权限；注册后将在下次开机自动启动 Core",
-									DisplayName:        true,
-									DisplayDescription: true,
-									Editor:             SwitchEditor{},
-								},
-								false,
-								false,
 							),
 						},
 					},

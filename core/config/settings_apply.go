@@ -4,7 +4,6 @@ package config
 
 import (
 	"CuckooInterface/core/logger"
-	"CuckooInterface/core/service"
 	"CuckooInterface/core/utils"
 	"fmt"
 	"math"
@@ -13,8 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"golang.org/x/sys/windows"
 )
 
 // SettingsApplyResult 描述一次设置保存中各 key 的实际结果。
@@ -40,7 +37,7 @@ func SaveSettings(values map[string]interface{}) SettingsApplyResult {
 
 	if v, ok := values["autoStart"]; ok {
 		enabled := toBool(v, old.AutoStart)
-		if err := utils.SetAutoStartForSID(old.ServiceUserSID, enabled); err != nil {
+		if err := utils.SetAutoStart(enabled); err != nil {
 			fail("autoStart", err)
 		} else {
 			valid["autoStart"] = enabled
@@ -55,32 +52,6 @@ func SaveSettings(values map[string]interface{}) SettingsApplyResult {
 			markRestart("singleInstance")
 		} else {
 			markApplied("singleInstance")
-		}
-	}
-
-	if v, ok := values["serviceMode"]; ok {
-		enabled := toBool(v, old.ServiceMode)
-		if enabled != old.ServiceMode {
-			if enabled {
-				sid, sidErr := currentUserSID()
-				if sidErr != nil {
-					fail("serviceMode", fmt.Errorf("获取当前用户 SID 失败: %w", sidErr))
-				} else if err := service.InstallElevated(""); err != nil {
-					fail("serviceMode", err)
-				} else {
-					valid["serviceMode"] = true
-					valid["serviceUserSid"] = sid
-					markApplied("serviceMode")
-				}
-			} else if err := service.UninstallElevated(); err != nil {
-				fail("serviceMode", err)
-			} else {
-				valid["serviceMode"] = false
-				valid["serviceUserSid"] = ""
-				markApplied("serviceMode")
-			}
-		} else {
-			markApplied("serviceMode")
 		}
 	}
 
@@ -226,20 +197,6 @@ func SaveSettings(values map[string]interface{}) SettingsApplyResult {
 		result.Errors = nil
 	}
 	return result
-}
-
-func currentUserSID() (string, error) {
-	token, err := windows.OpenCurrentProcessToken()
-	if err != nil {
-		return "", err
-	}
-	defer token.Close()
-
-	user, err := token.GetTokenUser()
-	if err != nil {
-		return "", err
-	}
-	return user.User.Sid.String(), nil
 }
 
 func resolvePluginDir(value string) (string, error) {

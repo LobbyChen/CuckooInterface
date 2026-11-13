@@ -609,7 +609,7 @@ namespace CuckooInterfaceUI.Pages
                         {
                             window.ShowToast(
                                 "无法自动重启",
-                                "Daemon 未连接；如使用系统服务，请通过服务管理器重启。",
+                                "Daemon 未连接，无法自动重启 Core。",
                                 true);
                         }
                         else
@@ -643,7 +643,6 @@ namespace CuckooInterfaceUI.Pages
         {
             "autoStart" => "开机自启动",
             "singleInstance" => "单实例",
-            "serviceMode" => "系统服务",
             "logLevel" => "日志级别",
             "logMaxSize" => "日志大小",
             "logCompress" => "日志压缩",

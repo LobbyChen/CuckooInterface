@@ -90,11 +90,7 @@ func (ipc *CoreIpcInterface) check() bool {
 }
 
 func (ipc *CoreIpcInterface) CreatePipe() error {
-	var pipeConfig *winio.PipeConfig
-	if descriptor := config.CorePipeSecurityDescriptor(); descriptor != "" {
-		pipeConfig = &winio.PipeConfig{SecurityDescriptor: descriptor}
-	}
-	l, err := winio.ListenPipe(constant.CoreNamePipe, pipeConfig)
+	l, err := winio.ListenPipe(constant.CoreNamePipe, nil)
 	if err != nil {
 		return err
 	}

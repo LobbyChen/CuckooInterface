@@ -32,7 +32,6 @@ func defaultCoreConfig() *CoreConfig {
 	return &CoreConfig{
 		AutoStart:       false,
 		SingleInstance:  true,
-		ServiceMode:     false,
 		LogLevel:        "info",
 		LogMaxSize:      100.0,
 		LogCompress:     true,
@@ -50,10 +49,8 @@ func defaultCoreConfig() *CoreConfig {
 // CoreConfig Core 全局配置结构体，字段与 SettingPanel 中的设置 key 一一对应。
 type CoreConfig struct {
 	// 通用
-	AutoStart      bool   `json:"autoStart"`      // 开机静默自启动
-	SingleInstance bool   `json:"singleInstance"` // 仅允许运行一个实例
-	ServiceMode    bool   `json:"serviceMode"`    // Core 注册为 Windows 服务并自动启动
-	ServiceUserSID string `json:"serviceUserSid"` // 允许访问服务 Core 管道的用户 SID
+	AutoStart      bool `json:"autoStart"`      // 开机静默自启动
+	SingleInstance bool `json:"singleInstance"` // 仅允许运行一个实例
 
 	// 日志
 	LogLevel    string  `json:"logLevel"`    // debug / info / warn / error
@@ -118,7 +115,6 @@ func applyCoreConfig(cfg *CoreConfig) {
 	settingsMu.Lock()
 	settingValues["autoStart"] = cfg.AutoStart
 	settingValues["singleInstance"] = cfg.SingleInstance
-	settingValues["serviceMode"] = cfg.ServiceMode
 	settingValues["logLevel"] = cfg.LogLevel
 	settingValues["logMaxSize"] = cfg.LogMaxSize
 	settingValues["logCompress"] = cfg.LogCompress
@@ -165,17 +161,6 @@ func writeCoreConfigFile(fp string, cfg *CoreConfig) error {
 		return err
 	}
 	return os.WriteFile(fp, data, 0666)
-}
-
-// CorePipeSecurityDescriptor 返回 Core 命名管道的 SDDL。
-// 普通用户模式返回空串（使用默认 ACL）；服务模式下仅额外授权安装服务时的用户 SID。
-func CorePipeSecurityDescriptor() string {
-	sid := strings.TrimSpace(GetCoreConfig().ServiceUserSID)
-	if sid == "" || !strings.HasPrefix(sid, "S-1-") ||
-		strings.ContainsAny(sid, `()\"`) {
-		return ""
-	}
-	return fmt.Sprintf("D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;%s)", sid)
 }
 
 // GetPluginRoot 返回用户插件根目录（包含 Base/Active/Kernel）。
