@@ -71,10 +71,10 @@ namespace CuckooInterfaceUI.Models
 
         public Brush StatusColor => Status.ToLowerInvariant() switch
         {
-            "running" => new SolidColorBrush(Color.FromRgb(0x63, 0xD3, 0x8B)),
-            "starting" => new SolidColorBrush(Color.FromRgb(0xFF, 0xB9, 0x00)),
-            "error" => new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x72)),
-            _ => new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6))
+            "running" => UiBrushes.Success,
+            "starting" => UiBrushes.Starting,
+            "error" => UiBrushes.Danger,
+            _ => UiBrushes.Neutral
         };
 
         public string SourceText => Source.ToLowerInvariant() switch

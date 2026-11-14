@@ -5,7 +5,6 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using Brush = System.Windows.Media.Brush;
-using Color = System.Windows.Media.Color;
 
 namespace CuckooInterfaceUI.Models
 {
@@ -79,7 +78,7 @@ namespace CuckooInterfaceUI.Models
         public bool CanUninstall => Type != PluginType.Kernel;
 
         /// <summary>
-        /// 是否可打开设置入口。Kernel 入口为运行时详情；其余插件必须提供配置页。
+        /// 是否可打开设置入口。Kernel 入口为配置页的运行时分区；其余插件必须提供配置页。
         /// </summary>
         public bool CanOpenSettings => Type == PluginType.Kernel || HasConfigPage;
 
@@ -93,15 +92,10 @@ namespace CuckooInterfaceUI.Models
             }
         }
 
-        public Brush StatusColor
-        {
-            get
-            {
-                if (!IsEnabled) return new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6));
-                if (IsLoaded) return new SolidColorBrush(Color.FromRgb(0x63, 0xD3, 0x8B));
-                return new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x72));
-            }
-        }
+        public Brush StatusColor =>
+            !IsEnabled ? UiBrushes.Neutral
+            : IsLoaded ? UiBrushes.Success
+            : UiBrushes.Danger;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 

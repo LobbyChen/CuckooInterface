@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,9 +24,8 @@ namespace CuckooInterfaceUI.Pages
     /// <summary>
     /// 设置页面：左侧导航，右侧轻量设置行。设置结构由后端动态驱动。
     /// </summary>
-    public partial class SettingsPage : Page
+    public partial class SettingsPage : BackendPage
     {
-        private readonly CoreBackend _backend = CoreBackend.Instance;
         private SettingPanel _settingsPanel = new();
         private readonly Dictionary<string, FrameworkElement> _controlMap = new();
         private readonly Dictionary<string, string> _colorValues = new();
@@ -38,29 +38,15 @@ namespace CuckooInterfaceUI.Pages
         {
             InitializeComponent();
             Loaded += SettingsPage_Loaded;
-            Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
 
         private async void SettingsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
-            _backend.ConnectionStateChanged += Backend_ConnectionStateChanged;
+            WatchConnection(() => BuildFromBackendAsync());
             await BuildFromBackendAsync();
         }
 
-        private void Backend_ConnectionStateChanged(object? sender, BackendConnectionStateChangedEventArgs e)
-        {
-            if (!e.IsCore || !IsVisible) return;
-            _ = Dispatcher.InvokeAsync(async () =>
-            {
-                if (e.IsConnected)
-                    await BuildFromBackendAsync();
-                else
-                    SetDisconnectedState();
-            });
-        }
-
-        private async System.Threading.Tasks.Task BuildFromBackendAsync()
+        private async Task BuildFromBackendAsync()
         {
             _suppressDirtyTracking = true;
             SetPendingChanges(false);
@@ -69,14 +55,14 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                if (!_backend.IsCoreConnected)
+                if (!Backend.IsCoreConnected)
                 {
                     SetDisconnectedState();
                     return;
                 }
 
                 var appearancePage = await BuildAppearancePageAsync();
-                var nextPanel = await _backend.GetSettingsPanelAsync();
+                var nextPanel = await Backend.GetSettingsPanelAsync();
                 var pages = new List<SettingPage> { appearancePage };
                 pages.AddRange(nextPanel.Pages);
 
@@ -103,13 +89,13 @@ namespace CuckooInterfaceUI.Pages
             finally
             {
                 _suppressDirtyTracking = false;
-                SaveSettingsButton.IsEnabled = _backend.IsCoreConnected && _hasPendingChanges;
+                SaveSettingsButton.IsEnabled = Backend.IsCoreConnected && _hasPendingChanges;
             }
         }
 
-        private async System.Threading.Tasks.Task<SettingPage> BuildAppearancePageAsync()
+        private async Task<SettingPage> BuildAppearancePageAsync()
         {
-            var values = await _backend.GetAppearanceSettingsAsync();
+            var values = await Backend.GetAppearanceSettingsAsync();
             object Get(string key, object fallback) => values.TryGetValue(key, out var v) ? v : fallback;
 
             return new SettingPage
@@ -256,12 +242,12 @@ namespace CuckooInterfaceUI.Pages
                 Tag = setting.Key,
                 MinWidth = 180,
                 HorizontalAlignment = HorizontalAlignment.Right,
-                Foreground = FindResource("TextFillColorPrimaryBrush") as Brush,
-                Background = FindResource("ControlFillColorDefaultBrush") as Brush
+                Foreground = PrimaryBrush,
+                Background = ControlBrush
             };
             foreach (var option in editor.Options)
             {
-                var item = new ComboBoxItem { Content = option.Text, Tag = option.Value, Foreground = FindResource("TextFillColorPrimaryBrush") as Brush, Background = FindResource("ControlFillColorDefaultBrush") as Brush };
+                var item = new ComboBoxItem { Content = option.Text, Tag = option.Value, Foreground = PrimaryBrush, Background = ControlBrush };
                 combo.Items.Add(item);
                 if (option.Value?.ToString() == setting.Value?.ToString())
                     combo.SelectedItem = item;
@@ -296,7 +282,7 @@ namespace CuckooInterfaceUI.Pages
             {
                 Text = $"{slider.Value:0.##}{editor.Unit}",
                 FontSize = 12,
-                Foreground = FindResource("TextFillColorSecondaryBrush") as Brush,
+                Foreground = SecondaryBrush,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0)
             };
@@ -318,8 +304,8 @@ namespace CuckooInterfaceUI.Pages
             var textBox = new TextBox
             {
                 Tag = setting.Key,
-                Foreground = FindResource("TextFillColorPrimaryBrush") as Brush,
-                Background = FindResource("ControlFillColorDefaultBrush") as Brush,
+                Foreground = PrimaryBrush,
+                Background = ControlBrush,
                 Text = setting.Value?.ToString() ?? string.Empty,
                 IsReadOnly = editor.ReadOnly,
                 MinHeight = editor.MultiLine ? 90 : 32,
@@ -401,7 +387,7 @@ namespace CuckooInterfaceUI.Pages
             {
                 Text = setting.DisplayName ? setting.Name : setting.Key,
                 FontSize = 13,
-                Foreground = FindResource("TextFillColorPrimaryBrush") as Brush,
+                Foreground = PrimaryBrush,
                 TextWrapping = TextWrapping.Wrap
             });
             if (setting.DisplayDescription && !string.IsNullOrWhiteSpace(setting.Description))
@@ -410,7 +396,7 @@ namespace CuckooInterfaceUI.Pages
                 {
                     Text = setting.Description,
                     FontSize = 11,
-                    Foreground = FindResource("TextFillColorSecondaryBrush") as Brush,
+                    Foreground = SecondaryBrush,
                     Margin = new Thickness(0, 2, 0, 0),
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -509,7 +495,7 @@ namespace CuckooInterfaceUI.Pages
 
         private void MarkSettingsDirty()
         {
-            if (_suppressDirtyTracking || !_backend.IsCoreConnected) return;
+            if (_suppressDirtyTracking || !Backend.IsCoreConnected) return;
             SetPendingChanges(true);
         }
 
@@ -519,14 +505,14 @@ namespace CuckooInterfaceUI.Pages
             if (UnsavedChangesText != null)
                 UnsavedChangesText.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
             if (SaveSettingsButton != null)
-                SaveSettingsButton.IsEnabled = _backend.IsCoreConnected && pending;
+                SaveSettingsButton.IsEnabled = Backend.IsCoreConnected && pending;
         }
 
         private async void SaveSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
@@ -552,7 +538,7 @@ namespace CuckooInterfaceUI.Pages
             foreach (var kv in _colorValues)
                 values[kv.Key] = kv.Value;
 
-            var window = Window.GetWindow(this) as MainWindow;
+            var window = HostWindow;
             var restartTriggered = false;
 
             try
@@ -560,7 +546,7 @@ namespace CuckooInterfaceUI.Pages
                 SaveSettingsButton.IsEnabled = false;
                 SaveSettingsButton.Content = "保存中…";
 
-                var result = await _backend.SaveSettingsAsync(values);
+                var result = await Backend.SaveSettingsAsync(values);
                 if (result == null)
                     throw new InvalidOperationException("Core 未返回设置保存结果。");
 
@@ -587,7 +573,7 @@ namespace CuckooInterfaceUI.Pages
                             Text = $"{SettingLabel(error.Key)}：{error.Value}",
                             FontSize = 12,
                             TextWrapping = TextWrapping.Wrap,
-                            Foreground = FindResource("TextFillColorPrimaryBrush") as Brush,
+                            Foreground = PrimaryBrush,
                             Margin = new Thickness(0, 0, 0, 8)
                         });
                     }
@@ -605,7 +591,7 @@ namespace CuckooInterfaceUI.Pages
 
                     if (confirmed)
                     {
-                        if (!_backend.IsDaemonConnected)
+                        if (!Backend.IsDaemonConnected)
                         {
                             window.ShowToast(
                                 "无法自动重启",
@@ -614,7 +600,7 @@ namespace CuckooInterfaceUI.Pages
                         }
                         else
                         {
-                            await _backend.RestartCoreAsync();
+                            await Backend.RestartCoreAsync();
                             window.ShowToast("正在重启 Core", "设置将在连接恢复后生效。");
                             restartTriggered = true;
                         }
@@ -635,7 +621,7 @@ namespace CuckooInterfaceUI.Pages
             finally
             {
                 SaveSettingsButton.Content = "保存";
-                SaveSettingsButton.IsEnabled = _backend.IsCoreConnected && _hasPendingChanges;
+                SaveSettingsButton.IsEnabled = Backend.IsCoreConnected && _hasPendingChanges;
             }
         }
 
@@ -656,7 +642,7 @@ namespace CuckooInterfaceUI.Pages
             _ => key
         };
 
-        private void SetDisconnectedState()
+        protected override void SetDisconnectedState()
         {
             _pageViews.Clear();
             _pages.Clear();
@@ -669,17 +655,6 @@ namespace CuckooInterfaceUI.Pages
             SetPendingChanges(false);
         }
 
-        private System.Threading.Tasks.Task ShowBackendErrorAsync(string title, Exception ex)
-        {
-            if (ex is BackendConnectionException)
-            {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
-                return System.Threading.Tasks.Task.CompletedTask;
-            }
-
-            (Window.GetWindow(this) as MainWindow)?.ShowToast(title, ex.Message, true);
-            return System.Threading.Tasks.Task.CompletedTask;
-        }
     }
 }
 

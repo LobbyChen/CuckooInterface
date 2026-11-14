@@ -135,18 +135,7 @@ namespace CuckooInterfaceUI.Services
         public async Task<List<EventRecord>> GetRecentEventsAsync(CancellationToken cancellationToken = default)
         {
             var data = await CallCoreAsync<List<EventRecordDto>>("getRecentEvents", null, cancellationToken);
-            var result = new List<EventRecord>(data.Count);
-            foreach (var item in data)
-            {
-                result.Add(new EventRecord
-                {
-                    Timestamp = DateTimeOffset.FromUnixTimeSeconds(item.Timestamp).LocalDateTime,
-                    EventName = item.EventName,
-                    Payload = string.IsNullOrWhiteSpace(item.Payload) ? "{}" : item.Payload,
-                    Level = ParseEventLevel(item.Level)
-                });
-            }
-            return result;
+            return data.ConvertAll(ToEventRecord);
         }
 
         public Task<List<RegisteredEvent>> GetRegisteredEventsAsync(CancellationToken cancellationToken = default) =>
@@ -162,14 +151,16 @@ namespace CuckooInterfaceUI.Services
                 new { name = eventName, payload = string.IsNullOrWhiteSpace(payload) ? "{}" : payload.Trim() },
                 cancellationToken);
 
-            return new EventRecord
-            {
-                Timestamp = DateTimeOffset.FromUnixTimeSeconds(dto.Timestamp).LocalDateTime,
-                EventName = dto.EventName,
-                Payload = string.IsNullOrWhiteSpace(dto.Payload) ? "{}" : dto.Payload,
-                Level = ParseEventLevel(dto.Level)
-            };
+            return ToEventRecord(dto);
         }
+
+        private static EventRecord ToEventRecord(EventRecordDto dto) => new()
+        {
+            Timestamp = DateTimeOffset.FromUnixTimeSeconds(dto.Timestamp).LocalDateTime,
+            EventName = dto.EventName,
+            Payload = string.IsNullOrWhiteSpace(dto.Payload) ? "{}" : dto.Payload,
+            Level = ParseEventLevel(dto.Level)
+        };
 
         // ===== 日志 =====
 
@@ -309,29 +300,17 @@ namespace CuckooInterfaceUI.Services
 
                 try
                 {
-                    await ConnectAsync(pipe, ConnectTimeoutMilliseconds, cancellationToken);
+                    await pipe.ConnectAsync(ConnectTimeoutMilliseconds, cancellationToken);
                 }
-                catch (IOException ex) when (attempt < ConnectAttempts)
+                catch (Exception ex) when (ex is IOException or TimeoutException)
                 {
                     lastConnectError = ex;
-                    await Task.Delay(150 * attempt, cancellationToken);
-                    continue;
-                }
-                catch (TimeoutException ex) when (attempt < ConnectAttempts)
-                {
-                    lastConnectError = ex;
-                    await Task.Delay(150 * attempt, cancellationToken);
-                    continue;
-                }
-                catch (IOException ex)
-                {
-                    lastConnectError = ex;
-                    SetConnectionState(pipeName, false);
-                    throw new BackendConnectionException(pipeName, ex);
-                }
-                catch (TimeoutException ex)
-                {
-                    lastConnectError = ex;
+                    if (attempt < ConnectAttempts)
+                    {
+                        await Task.Delay(150 * attempt, cancellationToken);
+                        continue;
+                    }
+
                     SetConnectionState(pipeName, false);
                     throw new BackendConnectionException(pipeName, ex);
                 }
@@ -349,18 +328,9 @@ namespace CuckooInterfaceUI.Services
                 {
                     throw;
                 }
-                catch (EndOfStreamException ex)
+                catch (Exception ex) when (ex is IOException or TimeoutException)
                 {
-                    SetConnectionState(pipeName, false);
-                    throw new BackendConnectionException(pipeName, ex);
-                }
-                catch (IOException ex)
-                {
-                    SetConnectionState(pipeName, false);
-                    throw new BackendConnectionException(pipeName, ex);
-                }
-                catch (TimeoutException ex)
-                {
+                    // EndOfStreamException 也是 IOException，统一按连接失败处理。
                     SetConnectionState(pipeName, false);
                     throw new BackendConnectionException(pipeName, ex);
                 }
@@ -369,9 +339,6 @@ namespace CuckooInterfaceUI.Services
             SetConnectionState(pipeName, false);
             throw new BackendConnectionException(pipeName, lastConnectError);
         }
-
-        private static Task ConnectAsync(NamedPipeClientStream pipe, int timeoutMilliseconds, CancellationToken cancellationToken) =>
-            pipe.ConnectAsync(timeoutMilliseconds, cancellationToken);
 
         private static async Task WritePacketAsync(Stream stream, byte[] payload, CancellationToken cancellationToken)
         {

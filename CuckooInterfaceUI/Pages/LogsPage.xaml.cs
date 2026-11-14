@@ -17,7 +17,6 @@ namespace CuckooInterfaceUI.Pages
     {
         private const int PageSize = 10;
 
-        private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<LogEntry> _allLogs = new();
         private List<LogEntry> _filteredLogs = new();
         private int _currentPage = 1;
@@ -26,7 +25,6 @@ namespace CuckooInterfaceUI.Pages
         {
             InitializeComponent();
             Loaded += LogsPage_Loaded;
-            Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
 
         // 每 2 秒自动刷新日志（静默模式：保留页码，不打断浏览）
@@ -34,19 +32,8 @@ namespace CuckooInterfaceUI.Pages
 
         private async void LogsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
-            _backend.ConnectionStateChanged += Backend_ConnectionStateChanged;
+            WatchConnection(() => LoadLogsFromBackendAsync());
             await LoadLogsFromBackendAsync();
-        }
-
-        private void Backend_ConnectionStateChanged(object? sender, BackendConnectionStateChangedEventArgs e)
-        {
-            if (!e.IsCore || !IsVisible) return;
-            _ = Dispatcher.InvokeAsync(async () =>
-            {
-                if (e.IsConnected) await LoadLogsFromBackendAsync();
-                else SetDisconnectedState();
-            });
         }
 
         /// <summary>
@@ -56,7 +43,7 @@ namespace CuckooInterfaceUI.Pages
         /// </summary>
         private async Task LoadLogsFromBackendAsync(bool interactive = true)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
                 SetDisconnectedState();
                 return;
@@ -67,7 +54,7 @@ namespace CuckooInterfaceUI.Pages
                 if (interactive)
                     RefreshLogsButton.IsEnabled = false;
 
-                var logs = await _backend.GetLogsAsync();
+                var logs = await Backend.GetLogsAsync();
 
                 // 数据未变化时跳过重建，避免自动刷新打断滚动与页码
                 if (LogsSignature(logs) == LogsSignature(_allLogs))
@@ -84,7 +71,7 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
-                var connected = _backend.IsCoreConnected;
+                var connected = Backend.IsCoreConnected;
                 RefreshLogsButton.IsEnabled = connected;
                 ExportLogsButton.IsEnabled = connected && _filteredLogs.Count > 0;
                 ClearLogsButton.IsEnabled = connected && _allLogs.Count > 0;
@@ -142,8 +129,8 @@ namespace CuckooInterfaceUI.Pages
             LogCountText.Text = $"{_filteredLogs.Count} 条";
             UpdateEmptyState();
             UpdateLogsPagination(totalPages);
-            ExportLogsButton.IsEnabled = _backend.IsCoreConnected && _filteredLogs.Count > 0;
-            ClearLogsButton.IsEnabled = _backend.IsCoreConnected && _allLogs.Count > 0;
+            ExportLogsButton.IsEnabled = Backend.IsCoreConnected && _filteredLogs.Count > 0;
+            ClearLogsButton.IsEnabled = Backend.IsCoreConnected && _allLogs.Count > 0;
         }
 
         private void UpdateLogsPagination(int totalPages)
@@ -185,7 +172,7 @@ namespace CuckooInterfaceUI.Pages
                 : "Core 当前没有返回可显示的日志。";
         }
 
-        private void SetDisconnectedState()
+        protected override void SetDisconnectedState()
         {
             _allLogs.Clear();
             _filteredLogs.Clear();
@@ -209,9 +196,9 @@ namespace CuckooInterfaceUI.Pages
 
         private async void ClearLogs_Click(object sender, RoutedEventArgs e)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
@@ -222,10 +209,10 @@ namespace CuckooInterfaceUI.Pages
             try
             {
                 ClearLogsButton.IsEnabled = false;
-                var ok = await _backend.ClearLogsAsync();
+                var ok = await Backend.ClearLogsAsync();
                 if (!ok) throw new InvalidOperationException("Core 未确认日志清空。");
                 await LoadLogsFromBackendAsync();
-                (Window.GetWindow(this) as MainWindow)?.ShowToast("日志已清空", "Core 日志缓存已经清空。");
+                HostWindow?.ShowToast("日志已清空", "Core 日志缓存已经清空。");
             }
             catch (Exception ex)
             {
@@ -252,34 +239,18 @@ namespace CuckooInterfaceUI.Pages
                 var lines = items.Select(log =>
                     $"{EscapeCsv(log.Time)},{EscapeCsv(log.LevelText)},{EscapeCsv(log.Message)}");
                 File.WriteAllLines(dialog.FileName, lines);
-                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出成功", $"已导出 {items.Count} 条日志。");
+                HostWindow?.ShowToast("导出成功", $"已导出 {items.Count} 条日志。");
             }
             catch (Exception ex)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出失败", ex.Message, true);
+                HostWindow?.ShowToast("导出失败", ex.Message, true);
             }
             finally
             {
-                ExportLogsButton.IsEnabled = _backend.IsCoreConnected && _filteredLogs.Count > 0;
+                ExportLogsButton.IsEnabled = Backend.IsCoreConnected && _filteredLogs.Count > 0;
             }
         }
 
-        private static string EscapeCsv(string value)
-        {
-            if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0) return value;
-            return $"\"{value.Replace("\"", "\"\"")}\"";
-        }
 
-        private System.Threading.Tasks.Task ShowBackendErrorAsync(string title, Exception ex)
-        {
-            if (ex is BackendConnectionException)
-            {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
-                return System.Threading.Tasks.Task.CompletedTask;
-            }
-
-            (Window.GetWindow(this) as MainWindow)?.ShowToast(title, ex.Message, true);
-            return System.Threading.Tasks.Task.CompletedTask;
-        }
     }
 }

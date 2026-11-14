@@ -3,7 +3,6 @@
 using System;
 using System.Windows.Media;
 using Brush = System.Windows.Media.Brush;
-using Color = System.Windows.Media.Color;
 
 namespace CuckooInterfaceUI.Models
 {
@@ -34,11 +33,11 @@ namespace CuckooInterfaceUI.Models
 
         public Brush LevelColor => Level switch
         {
-            LogLevel.Debug => new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6)),
-            LogLevel.Info => new SolidColorBrush(Color.FromRgb(0x63, 0xD3, 0x8B)),
-            LogLevel.Warn => new SolidColorBrush(Color.FromRgb(0xF2, 0xC3, 0x5E)),
-            LogLevel.Error => new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x72)),
-            _ => new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6))
+            LogLevel.Debug => UiBrushes.Neutral,
+            LogLevel.Info => UiBrushes.Success,
+            LogLevel.Warn => UiBrushes.Warning,
+            LogLevel.Error => UiBrushes.Danger,
+            _ => UiBrushes.Neutral
         };
     }
 }

@@ -18,7 +18,6 @@ namespace CuckooInterfaceUI.Pages
     {
         private const int PageSize = 10;
 
-        private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<EventOption> _eventOptions = new();
         private List<EventRecord> _allEvents = new();
         private int _currentPage = 1;
@@ -27,7 +26,6 @@ namespace CuckooInterfaceUI.Pages
         {
             InitializeComponent();
             Loaded += EventsPage_Loaded;
-            Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
 
         // 每 2 秒自动刷新事件数据（静默模式：保留页码，不打断翻页）
@@ -35,23 +33,8 @@ namespace CuckooInterfaceUI.Pages
 
         private async void EventsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
-            _backend.ConnectionStateChanged += Backend_ConnectionStateChanged;
+            WatchConnection(() => LoadDataAsync());
             await LoadDataAsync();
-        }
-
-        private void Backend_ConnectionStateChanged(object? sender, BackendConnectionStateChangedEventArgs e)
-        {
-            if (!e.IsCore || !IsVisible)
-                return;
-
-            _ = Dispatcher.InvokeAsync(async () =>
-            {
-                if (e.IsConnected)
-                    await LoadDataAsync();
-                else
-                    SetDisconnectedState();
-            });
         }
 
         /// <summary>
@@ -61,7 +44,7 @@ namespace CuckooInterfaceUI.Pages
         /// </summary>
         private async Task LoadDataAsync(bool interactive = true)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
                 SetDisconnectedState();
                 return;
@@ -77,9 +60,9 @@ namespace CuckooInterfaceUI.Pages
                     ExportEventsButton.IsEnabled = false;
                 }
 
-                var recentTask = _backend.GetRecentEventsAsync();
-                var registeredTask = _backend.GetRegisteredEventsAsync();
-                var optionsTask = _backend.GetEventOptionsAsync();
+                var recentTask = Backend.GetRecentEventsAsync();
+                var registeredTask = Backend.GetRegisteredEventsAsync();
+                var optionsTask = Backend.GetEventOptionsAsync();
 
                 await Task.WhenAll(recentTask, registeredTask, optionsTask);
 
@@ -107,7 +90,7 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
-                var connected = _backend.IsCoreConnected;
+                var connected = Backend.IsCoreConnected;
                 RefreshEventsButton.IsEnabled = connected;
                 OpenRegisteredButton.IsEnabled = connected;
                 OpenPublishButton.IsEnabled = connected;
@@ -158,22 +141,16 @@ namespace CuckooInterfaceUI.Pages
                     $"{EscapeCsv(evt.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))}," +
                     $"{EscapeCsv(evt.LevelText)},{EscapeCsv(evt.EventName)},{EscapeCsv(evt.Payload)}");
                 File.WriteAllLines(dialog.FileName, lines);
-                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出成功", $"已导出 {items.Count} 条事件。");
+                HostWindow?.ShowToast("导出成功", $"已导出 {items.Count} 条事件。");
             }
             catch (Exception ex)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowToast("导出失败", ex.Message, true);
+                HostWindow?.ShowToast("导出失败", ex.Message, true);
             }
             finally
             {
-                ExportEventsButton.IsEnabled = _backend.IsCoreConnected && _allEvents.Count > 0;
+                ExportEventsButton.IsEnabled = Backend.IsCoreConnected && _allEvents.Count > 0;
             }
-        }
-
-        private static string EscapeCsv(string value)
-        {
-            if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0) return value;
-            return $"\"{value.Replace("\"", "\"\"")}\"";
         }
 
         private void UpdateRecentEmptyState(bool disconnected)
@@ -203,7 +180,7 @@ namespace CuckooInterfaceUI.Pages
             RecentEventsList.ItemsSource = pageItems;
             UpdateRecentEmptyState(false);
             UpdateEventsPagination(totalPages);
-            ExportEventsButton.IsEnabled = _backend.IsCoreConnected && _allEvents.Count > 0;
+            ExportEventsButton.IsEnabled = Backend.IsCoreConnected && _allEvents.Count > 0;
         }
 
         private void UpdateEventsPagination(int totalPages)
@@ -232,7 +209,7 @@ namespace CuckooInterfaceUI.Pages
             }
         }
 
-        private void SetDisconnectedState()
+        protected override void SetDisconnectedState()
         {
             _allEvents.Clear();
             _currentPage = 1;
@@ -249,13 +226,13 @@ namespace CuckooInterfaceUI.Pages
 
         private async void OpenPublishPanel_Click(object sender, RoutedEventArgs e)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
-            var host = (Window.GetWindow(this) as MainWindow)?.RootContentDialogHost;
+            var host = HostWindow?.RootContentDialogHost;
             if (host == null)
                 return;
 
@@ -334,7 +311,7 @@ namespace CuckooInterfaceUI.Pages
 
             if (eventNameComboBox.SelectedItem is not EventOption option)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     "无法发布",
                     "请先选择事件名称。",
                     true);
@@ -347,9 +324,9 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                await _backend.PublishEventAsync(option.Name, payload);
+                await Backend.PublishEventAsync(option.Name, payload);
                 await LoadDataAsync();
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     "事件已发布",
                     option.Name);
             }
@@ -361,19 +338,19 @@ namespace CuckooInterfaceUI.Pages
 
         private async void OpenRegisteredPanel_Click(object sender, RoutedEventArgs e)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
-            var host = (Window.GetWindow(this) as MainWindow)?.RootContentDialogHost;
+            var host = HostWindow?.RootContentDialogHost;
             if (host == null)
                 return;
 
             try
             {
-                var registered = await _backend.GetRegisteredEventsAsync();
+                var registered = await Backend.GetRegisteredEventsAsync();
 
                 var grid = new System.Windows.Controls.DataGrid
                 {
@@ -439,17 +416,17 @@ namespace CuckooInterfaceUI.Pages
                 return;
             }
 
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
             try
             {
-                await _backend.PublishEventAsync(evt.EventName, evt.Payload);
+                await Backend.PublishEventAsync(evt.EventName, evt.Payload);
                 await LoadDataAsync();
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     "事件已重新发布",
                     evt.EventName);
             }
@@ -459,16 +436,6 @@ namespace CuckooInterfaceUI.Pages
             }
         }
 
-        private System.Threading.Tasks.Task ShowBackendErrorAsync(string title, Exception ex)
-        {
-            if (ex is BackendConnectionException)
-            {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
-                return System.Threading.Tasks.Task.CompletedTask;
-            }
 
-            (Window.GetWindow(this) as MainWindow)?.ShowToast(title, ex.Message, true);
-            return System.Threading.Tasks.Task.CompletedTask;
-        }
     }
 }

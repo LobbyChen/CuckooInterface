@@ -16,14 +16,12 @@ namespace CuckooInterfaceUI.Pages
 {
     public partial class PluginsPage : AutoRefreshPage
     {
-        private readonly CoreBackend _backend = CoreBackend.Instance;
         private List<PluginInfo> _allPlugins = new();
 
         public PluginsPage()
         {
             InitializeComponent();
             Loaded += PluginsPage_Loaded;
-            Unloaded += (_, _) => _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
         }
 
         // 每 2 秒自动刷新插件列表（静默模式）
@@ -31,23 +29,8 @@ namespace CuckooInterfaceUI.Pages
 
         private async void PluginsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            _backend.ConnectionStateChanged -= Backend_ConnectionStateChanged;
-            _backend.ConnectionStateChanged += Backend_ConnectionStateChanged;
+            WatchConnection(() => LoadPluginsFromBackendAsync());
             await LoadPluginsFromBackendAsync();
-        }
-
-        private void Backend_ConnectionStateChanged(object? sender, BackendConnectionStateChangedEventArgs e)
-        {
-            if (!e.IsCore || !IsVisible)
-                return;
-
-            _ = Dispatcher.InvokeAsync(async () =>
-            {
-                if (e.IsConnected)
-                    await LoadPluginsFromBackendAsync();
-                else
-                    SetDisconnectedState();
-            });
         }
 
         /// <summary>
@@ -56,7 +39,7 @@ namespace CuckooInterfaceUI.Pages
         /// </summary>
         private async Task LoadPluginsFromBackendAsync(bool interactive = true)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
                 SetDisconnectedState();
                 return;
@@ -70,7 +53,7 @@ namespace CuckooInterfaceUI.Pages
                     InstallPluginButton.IsEnabled = false;
                 }
 
-                var plugins = await _backend.GetPluginsAsync();
+                var plugins = await Backend.GetPluginsAsync();
 
                 // 数据未变化时跳过重建，避免自动刷新打断滚动与筛选结果
                 if (PluginsSignature(plugins) == PluginsSignature(_allPlugins))
@@ -89,7 +72,7 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
-                var connected = _backend.IsCoreConnected;
+                var connected = Backend.IsCoreConnected;
                 RefreshPluginsButton.IsEnabled = connected;
                 InstallPluginButton.IsEnabled = connected;
             }
@@ -164,10 +147,10 @@ namespace CuckooInterfaceUI.Pages
                 return;
             }
 
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
                 toggle.IsChecked = plugin.IsEnabled;
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
@@ -176,13 +159,13 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                var ok = await _backend.TogglePluginAsync(plugin.Id, targetEnabled);
+                var ok = await Backend.TogglePluginAsync(plugin.Id, targetEnabled);
                 if (!ok)
                     throw new InvalidOperationException("Core 未确认插件状态变更。");
 
                 await LoadPluginsFromBackendAsync();
 
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     targetEnabled ? "插件已启用" : "插件已禁用",
                     plugin.Name);
             }
@@ -193,7 +176,7 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
-                toggle.IsEnabled = _backend.IsCoreConnected;
+                toggle.IsEnabled = Backend.IsCoreConnected;
             }
         }
 
@@ -202,14 +185,16 @@ namespace CuckooInterfaceUI.Pages
             if (sender is not FrameworkElement element || element.Tag is not PluginInfo plugin)
                 return;
 
-            // Kernel 的入口是运行时详情；其余插件仅在提供配置页时可用。
+            // Kernel 的入口是配置页的运行时分区；其余插件仅在提供配置页时可用。
             if (plugin.Type == PluginType.Kernel)
             {
-                RuntimesPage.PendingKernelId = plugin.Id;
-                NavigateTo(typeof(RuntimesPage));
+                ConfigPage.PendingKernelId = plugin.Id;
+                ConfigPage.PendingShowRuntimes = true;
+                NavigateTo(typeof(ConfigPage));
                 return;
             }
 
+            ConfigPage.PendingShowRuntimes = false;
             ConfigPage.PendingPluginId = plugin.Id;
             NavigateTo(typeof(ConfigPage));
         }
@@ -240,13 +225,13 @@ namespace CuckooInterfaceUI.Pages
 
             try
             {
-                var ok = await _backend.RemovePluginAsync(plugin.Id);
+                var ok = await Backend.RemovePluginAsync(plugin.Id);
                 if (!ok)
                     throw new InvalidOperationException("Core 未确认插件卸载。");
 
                 await LoadPluginsFromBackendAsync();
 
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     "插件已卸载",
                     plugin.Name);
             }
@@ -258,13 +243,13 @@ namespace CuckooInterfaceUI.Pages
 
         private async void OpenInstallPanel_Click(object sender, RoutedEventArgs e)
         {
-            if (!_backend.IsCoreConnected)
+            if (!Backend.IsCoreConnected)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
+                HostWindow?.ShowBackendUnavailable();
                 return;
             }
 
-            var host = (Window.GetWindow(this) as MainWindow)?.RootContentDialogHost;
+            var host = HostWindow?.RootContentDialogHost;
             if (host == null)
                 return;
 
@@ -353,7 +338,7 @@ namespace CuckooInterfaceUI.Pages
             var path = (pathBox.Text ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     "无法安装",
                     "请选择有效的插件包文件。",
                     true);
@@ -364,13 +349,13 @@ namespace CuckooInterfaceUI.Pages
             {
                 InstallPluginButton.IsEnabled = false;
 
-                var ok = await _backend.InstallPluginAsync(path);
+                var ok = await Backend.InstallPluginAsync(path);
                 if (!ok)
                     throw new InvalidOperationException("Core 未确认插件安装成功。");
 
                 await LoadPluginsFromBackendAsync();
 
-                (Window.GetWindow(this) as MainWindow)?.ShowToast(
+                HostWindow?.ShowToast(
                     "插件已安装",
                     Path.GetFileName(path));
             }
@@ -380,7 +365,7 @@ namespace CuckooInterfaceUI.Pages
             }
             finally
             {
-                InstallPluginButton.IsEnabled = _backend.IsCoreConnected;
+                InstallPluginButton.IsEnabled = Backend.IsCoreConnected;
             }
         }
 
@@ -412,7 +397,7 @@ namespace CuckooInterfaceUI.Pages
                     : "可以从右上角安装插件。";
         }
 
-        private void SetDisconnectedState()
+        protected override void SetDisconnectedState()
         {
             _allPlugins.Clear();
             PluginsList.ItemsSource = null;
@@ -422,26 +407,5 @@ namespace CuckooInterfaceUI.Pages
             InstallPluginButton.IsEnabled = false;
         }
 
-        private System.Threading.Tasks.Task ShowBackendErrorAsync(string title, Exception ex)
-        {
-            if (ex is BackendConnectionException)
-            {
-                (Window.GetWindow(this) as MainWindow)?.ShowBackendUnavailable();
-                return System.Threading.Tasks.Task.CompletedTask;
-            }
-
-            (Window.GetWindow(this) as MainWindow)?.ShowToast(
-                title,
-                ex.Message,
-                true);
-
-            return System.Threading.Tasks.Task.CompletedTask;
-        }
-
-        private void NavigateTo(Type pageType)
-        {
-            if (Window.GetWindow(this) is MainWindow window)
-                window.RootNavigation.Navigate(pageType);
-        }
     }
 }

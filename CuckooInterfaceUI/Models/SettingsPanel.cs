@@ -123,30 +123,6 @@ namespace CuckooInterfaceUI.Models
 
     // ===== Setting 定义 =====
 
-    public class SettingDefinition
-    {
-        [JsonPropertyName("key")]
-        public string Key { get; set; } = string.Empty;
-
-        [JsonPropertyName("name")]
-        public string Name { get; set; } = string.Empty;
-
-        [JsonPropertyName("description")]
-        public string Description { get; set; } = string.Empty;
-
-        [JsonPropertyName("displayName")]
-        public bool DisplayName { get; set; }
-
-        [JsonPropertyName("displayDescription")]
-        public bool DisplayDescription { get; set; }
-
-        [JsonPropertyName("editor")]
-        public Editor Editor { get; set; } = new TextEditor();
-
-        [JsonPropertyName("actions")]
-        public List<SettingAction> Actions { get; set; } = new();
-    }
-
     /// <summary>
     /// 单个设置项（值与元数据合一，对应 Go 端 TypedSetting 的序列化结果）。
     /// </summary>

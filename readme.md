@@ -202,8 +202,7 @@ CuckooInterface/
     ├── Pages/                   # 功能页面
     │   ├── HomePage.xaml        # 概览
     │   ├── PluginsPage.xaml     # 插件管理
-    │   ├── RuntimesPage.xaml    # 运行时管理
-    │   ├── ConfigPage.xaml      # 配置
+    │   ├── ConfigPage.xaml      # 配置（插件配置与运行时）
     │   ├── EventsPage.xaml      # 事件记录
     │   ├── LogsPage.xaml        # 日志
     │   └── SettingsPage.xaml    # 设置
