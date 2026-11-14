@@ -248,6 +248,19 @@ int LuaGetPluginConfig(lua_State* L) {
   return 1;
 }
 
+int LuaWritePluginConfig(lua_State* L) {
+  const char* plugin_name = luaL_optstring(L, 1, "");
+  std::string payload;
+  std::string error;
+  if (!EncodePayload(L, 2, payload, error)) {
+    return luaL_error(L, "write_plugin_config payload: %s", error.c_str());
+  }
+  if (g_kernel && g_kernel->HostAPI() && g_kernel->HostAPI()->write_plugin_config) {
+    g_kernel->HostAPI()->write_plugin_config(plugin_name, payload.c_str());
+  }
+  return 0;
+}
+
 int LuaOnEvent(lua_State* L) {
   auto* inst = PluginFromUpvalue(L);
   if (!inst) return luaL_error(L, "plugin instance is unavailable");
@@ -293,6 +306,9 @@ int LuaOpenCuckooSDK(lua_State* L) {
   lua_pushcfunction(L, LuaGetPluginConfig);
   lua_setfield(L, -2, "get_plugin_config");
 
+  lua_pushcfunction(L, LuaWritePluginConfig);
+  lua_setfield(L, -2, "set_plugin_config");
+
   // 便捷别名，保持与 Python SDK 的心智模型一致。
   lua_getfield(L, -1, "emit_event");
   lua_setfield(L, -2, "emit");
@@ -302,6 +318,8 @@ int LuaOpenCuckooSDK(lua_State* L) {
   lua_setfield(L, -2, "error");
   lua_getfield(L, -1, "get_plugin_config");
   lua_setfield(L, -2, "config");
+  lua_getfield(L, -1, "set_plugin_config");
+  lua_setfield(L, -2, "save_config");
 
   return 1;
 }

@@ -27,6 +27,7 @@ typedef struct {
 
   /* 返回值生命周期仅保证到本次调用结束。 */
   const char* (*get_plugin_config)(const char* plugin_name);
+  void (*write_plugin_config)(const char* plugin_name, const char* json_payload);
 
   void (*into_loop_report)(const char* kernel_id);
 

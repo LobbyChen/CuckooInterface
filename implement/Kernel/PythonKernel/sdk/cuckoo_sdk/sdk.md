@@ -299,6 +299,29 @@ value = config.get("some_key")
 
 ---
 
+### `set_plugin_config(plugin_name, config)`
+
+覆盖指定插件的配置并立即写盘。
+
+```python
+from cuckoo_sdk import set_plugin_config
+
+set_plugin_config("com.example.my_base", {"interval": 30, "enabled": True})
+```
+
+**参数**
+
+| 参数          | 类型            | 说明                          |
+|---------------|-----------------|-------------------------------|
+| `plugin_name` | string          | 插件 ID（如 `com.example.xxx`） |
+| `config`      | dict \| string  | 新配置；`dict` 会被 JSON 序列化，`string` 原样写入 |
+
+**返回值**：`None`
+
+**别名**：`save_config`
+
+---
+
 ## 完整示例
 
 ### Base 插件（产生事件）

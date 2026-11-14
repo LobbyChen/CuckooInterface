@@ -27,6 +27,7 @@ _emit_event_impl: Optional[Callable[[str, str], None]] = None
 _log_info_impl: Optional[Callable[[str], None]] = None
 _log_error_impl: Optional[Callable[[str], None]] = None
 _get_plugin_config_impl: Optional[Callable[[str], str]] = None
+_write_plugin_config_impl: Optional[Callable[[str, str], None]] = None
 
 # 事件监听器注册表
 # 内核在加载每个插件前会清空此列表，加载完成后读取，
@@ -90,11 +91,28 @@ def get_plugin_config(plugin_name: str) -> Dict[str, Any]:
         return {}
 
 
+def set_plugin_config(plugin_name: str, config: Any) -> None:
+    """覆盖指定插件的配置并立即写盘。
+
+    Args:
+        plugin_name: 插件 ID（如 ``com.example.my_base``）。
+        config: 新配置。str 原样写入，其它对象会被 JSON 序列化。
+    """
+    if _write_plugin_config_impl is None:
+        return
+    if isinstance(config, str):
+        payload = config
+    else:
+        payload = json.dumps(config, ensure_ascii=False)
+    _write_plugin_config_impl(plugin_name, payload)
+
+
 # 便捷别名
 emit = emit_event
 info = log_info
 error = log_error
 config = get_plugin_config
+save_config = set_plugin_config
 
 
 __all__ = [
@@ -103,8 +121,10 @@ __all__ = [
     "log_info",
     "log_error",
     "get_plugin_config",
+    "set_plugin_config",
     "emit",
     "info",
     "error",
     "config",
+    "save_config",
 ]

@@ -1,4 +1,4 @@
-package CuckooInterface
+package main
 
 import (
 	"CuckooInterface/core/logger"

@@ -1,6 +1,6 @@
 // Copyright (C) 2026 LobbyChen
 // SPDX-License-Identifier: AGPL-3.0-only
-package CuckooInterface
+package main
 
 import (
 	"CuckooInterface/core/constant"
@@ -34,7 +34,7 @@ func MainDaemonLoop() {
 	// Core 生命周期由保活循环独占
 	control := make(chan coreCommand)
 	coreDone := make(chan struct{})
-	go func() {
+	go func() { // KeepAliveLoop在单次Daemon生命周期中只允许调用一次
 		KeepCoreAliveLoop(log, coreCtx, control)
 		close(coreDone)
 	}()

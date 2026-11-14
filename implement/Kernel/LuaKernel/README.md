@@ -16,10 +16,13 @@ end)
 sdk.emit_event("demo.event", { ok = true, count = 1 })
 
 local raw = sdk.get_plugin_config("com.example.plugin")
+sdk.set_plugin_config("com.example.plugin", { ok = true })
 ```
 
 `emit_event` 支持：字符串、nil、boolean、number、table。Lua table 会被编码为 JSON；循环引用、非字符串对象键和不支持的值类型会返回 Lua error。
 
 `get_plugin_config` 返回 Core 提供的原始 JSON 字符串，不额外绑定 JSON 解析器。
+
+`set_plugin_config` 覆盖指定插件的配置并立即写盘，参数与 `emit_event` 一样支持字符串或 table；`save_config` 是它的别名。
 
 插件默认入口为 `main.lua`，也可以在 `META-INF.json` 中用 `entry` 指定脚本文件名。

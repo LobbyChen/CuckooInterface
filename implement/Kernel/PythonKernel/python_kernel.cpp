@@ -193,6 +193,23 @@ static PyObject* PyGetPluginConfig(PyObject*, PyObject* args) {
   return result != nullptr ? result : PyRt().NewNoneRef();
 }
 
+static PyObject* PyWritePluginConfig(PyObject*, PyObject* args) {
+  std::string plugin_name;
+  std::string payload;
+  if (!TupleString(args, 0, &plugin_name) ||
+      !TupleString(args, 1, &payload)) {
+    Py().err_set_string(PyRt().type_error(),
+                        "set_plugin_config expects (str, str)");
+    return nullptr;
+  }
+  if (g_kernel && g_kernel->HostAPI() &&
+      g_kernel->HostAPI()->write_plugin_config) {
+    g_kernel->HostAPI()->write_plugin_config(plugin_name.c_str(),
+                                             payload.c_str());
+  }
+  return PyRt().NewNoneRef();
+}
+
 static const PyMethodDef kEmitEventDef = {"_impl", PyEmitEvent,
                                           python_runtime::kMETHVarArgs, ""};
 static const PyMethodDef kLogInfoDef = {"_impl", PyLogInfo,
@@ -201,6 +218,8 @@ static const PyMethodDef kLogErrorDef = {"_impl", PyLogError,
                                          python_runtime::kMETHVarArgs, ""};
 static const PyMethodDef kGetPluginConfigDef = {
     "_impl", PyGetPluginConfig, python_runtime::kMETHVarArgs, ""};
+static const PyMethodDef kWritePluginConfigDef = {
+    "_impl", PyWritePluginConfig, python_runtime::kMETHVarArgs, ""};
 
 // ===========================================================================
 // PythonKernel
@@ -282,13 +301,16 @@ bool PythonKernel::InjectHostAPIIntoSDK() {
       const_cast<PyMethodDef*>(&kLogErrorDef), nullptr, nullptr);
   PyObject* get_config = Py().cfunction_new_ex(
       const_cast<PyMethodDef*>(&kGetPluginConfigDef), nullptr, nullptr);
+  PyObject* write_config = Py().cfunction_new_ex(
+      const_cast<PyMethodDef*>(&kWritePluginConfigDef), nullptr, nullptr);
 
   if (emit == nullptr || log_info == nullptr || log_error == nullptr ||
-      get_config == nullptr) {
+      get_config == nullptr || write_config == nullptr) {
     Py().decref(emit);
     Py().decref(log_info);
     Py().decref(log_error);
     Py().decref(get_config);
+    Py().decref(write_config);
     LogPythonException("create host API wrappers");
     return false;
   }
@@ -299,11 +321,14 @@ bool PythonKernel::InjectHostAPIIntoSDK() {
   ok &= Py().object_set_attr_string(sdk_module_, "_log_error_impl", log_error) == 0;
   ok &= Py().object_set_attr_string(sdk_module_, "_get_plugin_config_impl",
                                     get_config) == 0;
+  ok &= Py().object_set_attr_string(sdk_module_, "_write_plugin_config_impl",
+                                    write_config) == 0;
 
   Py().decref(emit);
   Py().decref(log_info);
   Py().decref(log_error);
   Py().decref(get_config);
+  Py().decref(write_config);
   if (!ok) {
     LogPythonException("inject host API into SDK");
   }

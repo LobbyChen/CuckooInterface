@@ -1,4 +1,4 @@
-package CuckooInterface
+package main
 
 import (
 	"flag"
@@ -6,8 +6,8 @@ import (
 )
 
 var args []string = []string{
-	"-launch_type",
-	"-no_ui",
+	"launch_type",
+	"no_ui",
 }
 
 // 启动类型
