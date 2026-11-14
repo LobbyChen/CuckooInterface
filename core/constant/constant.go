@@ -83,5 +83,7 @@ const (
 const CoreNamePipe string = "\\\\.\\pipe\\CuckooCoreInterfaceBridge"
 const DaemonNamePipe string = "\\\\.\\pipe\\CuckooDaemonInterfaceBridge"
 
+const DaemonNamePipeArg string = "-daemonpipe"
+
 // 错误消息定义
 const ErrorMsgTitle string = "CuckooInterface遇到问题"

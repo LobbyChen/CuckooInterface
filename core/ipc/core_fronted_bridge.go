@@ -105,44 +105,6 @@ func (ipc *CoreIpcInterface) DestroyPipe() error {
 	return ipc.listener.Close()
 }
 
-func (ipc *CoreIpcInterface) waitForSentData(data []byte) error {
-	conn, err := ipc.listener.Accept()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	err = conn.SetWriteDeadline(time.Now().Add(time.Second * 1))
-	if err != nil {
-		return err
-	}
-	sentData := GeneralPkg(data)
-	cnt, err := conn.Write(sentData)
-	if err != nil {
-		return err
-	}
-	if cnt != len(sentData) {
-		return fmt.Errorf("expected to write %d bytes, wrote %d", len(data), cnt)
-	}
-	return nil
-}
-
-func (ipc *CoreIpcInterface) waitForReceivedData() ([]byte, error) {
-	conn, err := ipc.listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	err = conn.SetReadDeadline(time.Now().Add(time.Second * 1))
-	if err != nil {
-		return nil, err
-	}
-	recvData, err := ReadSinglePacket(conn)
-	if err != nil {
-		return nil, err
-	}
-	return recvData, nil
-}
-
 // ServeLoop 持续接受前端连接，读取请求并返回响应。
 func (ipc *CoreIpcInterface) ServeLoop() {
 	for {

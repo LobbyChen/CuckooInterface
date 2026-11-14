@@ -12,7 +12,7 @@ import (
 )
 
 // 通过 PID 终止进程
-func terminateProcess(pid uint32) error {
+func TerminateProcess(pid uint32) error {
 	handle, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid)
 	if err != nil {
 		return fmt.Errorf("failed to open process: %v", err)
@@ -49,7 +49,7 @@ func KillProcessByName(processName string) error {
 		// 比较进程名
 		name := windows.UTF16ToString(entry.ExeFile[:])
 		if name == processName {
-			err = terminateProcess(entry.ProcessID)
+			err = TerminateProcess(entry.ProcessID)
 			if err != nil {
 				return err
 			}
