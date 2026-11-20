@@ -453,11 +453,30 @@ namespace CuckooInterfaceUI.Pages
                 using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("type", out var type) ||
-                    type.GetString() != "cuckoo:saveConfig")
+                if (!root.TryGetProperty("type", out var type))
+                    return;
+
+                var messageType = type.GetString();
+                if (messageType == "cuckoo:getConfig")
                 {
+                    // 配置页可按需轮询宿主持久化配置；插件运行时写回的状态和操作结果
+                    // 也通过同一配置存储读取，不需要插件额外开放 localhost HTTP API。
+                    var latest = await Backend.GetPluginConfigAsync(entry.PluginId);
+                    entry.Config = latest.Config ?? string.Empty;
+                    if (entry.View.CoreWebView2 != null)
+                    {
+                        var snapshot = JsonSerializer.Serialize(new
+                        {
+                            type = "cuckoo:config",
+                            config = entry.Config
+                        });
+                        entry.View.CoreWebView2.PostWebMessageAsJson(snapshot);
+                    }
                     return;
                 }
+
+                if (messageType != "cuckoo:saveConfig")
+                    return;
 
                 if (!root.TryGetProperty("config", out var config) ||
                     config.ValueKind != JsonValueKind.String)
