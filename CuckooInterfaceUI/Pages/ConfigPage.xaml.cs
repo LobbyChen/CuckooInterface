@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -486,7 +487,11 @@ namespace CuckooInterfaceUI.Pages
                     return;
                 }
 
-                var value = config.GetString() ?? string.Empty;
+                var submittedValue = config.GetString() ?? string.Empty;
+                // 页面轮询间隔与插件轮询间隔不同，保存时可能拿着稍旧的快照。
+                // 合并时以 Core 最新配置为底稿，保留插件刚写入的状态/回执，并合并命令队列。
+                var latest = await Backend.GetPluginConfigAsync(entry.PluginId);
+                var value = MergeConfigPageUpdate(latest.Config ?? string.Empty, submittedValue);
                 if (value == entry.Config)
                 {
                     PostSaveResult(entry, true, string.Empty);
@@ -508,6 +513,67 @@ namespace CuckooInterfaceUI.Pages
             {
                 PostSaveResult(entry, false, ex.Message);
             }
+        }
+
+        private static string MergeConfigPageUpdate(string latestJson, string submittedJson)
+        {
+            var latest = JsonNode.Parse(string.IsNullOrWhiteSpace(latestJson) ? "{}" : latestJson) as JsonObject
+                ?? new JsonObject();
+            var submitted = JsonNode.Parse(string.IsNullOrWhiteSpace(submittedJson) ? "{}" : submittedJson) as JsonObject
+                ?? new JsonObject();
+
+            // 这些字段由插件运行时维护，不能被页面的旧快照覆盖。
+            var runtimeOwned = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "runtime_state", "automation_state", "ui_results", "ui_commands"
+            };
+            foreach (var pair in submitted)
+            {
+                if (runtimeOwned.Contains(pair.Key))
+                    continue;
+                latest[pair.Key] = pair.Value?.DeepClone();
+            }
+
+            var completedIds = new HashSet<string>(StringComparer.Ordinal);
+            if (latest["ui_results"] is JsonArray results)
+            {
+                foreach (var item in results)
+                {
+                    if (item is JsonObject result &&
+                        result["id"] is JsonValue idValue &&
+                        idValue.TryGetValue<string>(out var id) &&
+                        !string.IsNullOrWhiteSpace(id))
+                    {
+                        completedIds.Add(id);
+                    }
+                }
+            }
+
+            var mergedCommands = new JsonArray();
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            void AppendCommands(JsonNode? node)
+            {
+                if (node is not JsonArray commands)
+                    return;
+                foreach (var item in commands)
+                {
+                    if (item is not JsonObject command ||
+                        command["id"] is not JsonValue commandId ||
+                        !commandId.TryGetValue<string>(out var id) ||
+                        string.IsNullOrWhiteSpace(id) ||
+                        completedIds.Contains(id) ||
+                        !seenIds.Add(id))
+                    {
+                        continue;
+                    }
+                    mergedCommands.Add(command.DeepClone());
+                }
+            }
+
+            AppendCommands(latest["ui_commands"]);
+            AppendCommands(submitted["ui_commands"]);
+            latest["ui_commands"] = mergedCommands;
+            return latest.ToJsonString();
         }
 
         private void PostSaveResult(ConfigView entry, bool ok, string error)
