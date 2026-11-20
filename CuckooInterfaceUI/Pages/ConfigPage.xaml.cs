@@ -32,7 +32,8 @@ namespace CuckooInterfaceUI.Pages
     /// 1. 页面加载完成后，宿主发送 <c>{"type":"cuckoo:init","config":"..."}</c>，
     ///    同时注入 <c>window.__cuckooConfig</c> 并派发 <c>cuckoo-config-ready</c> 事件；
     /// 2. 配置页调用 <c>window.chrome.webview.postMessage({type:"cuckoo:saveConfig", config:"..."})</c> 保存；
-    /// 3. 宿主保存后回复 <c>{"type":"cuckoo:saved","ok":true|false,"error":"..."}</c>。
+    /// 3. 配置页可定期发送 <c>{"type":"cuckoo:getConfig"}</c>，宿主从 Core 读取最新配置并回复 <c>{"type":"cuckoo:config","config":"..."}</c>；
+    /// 4. 宿主保存后回复 <c>{"type":"cuckoo:saved","ok":true|false,"error":"..."}</c>。
     /// </para>
     /// </summary>
     public partial class ConfigPage : AutoRefreshPage
